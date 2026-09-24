@@ -1,0 +1,6 @@
+.vscode/
+.clangd
+.clangd-shims/
+.cache/
+compile_commands.json
+.DS_Store
