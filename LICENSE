@@ -1,0 +1,52 @@
+PROPRIETARY LICENSE
+
+AgentRed — Windows Red Team Toolkit
+Copyright (c) 2026 Matan Mishali. All Rights Reserved.
+
+TERMS AND CONDITIONS
+
+1. OWNERSHIP
+   This software and all associated source code, binaries, documentation,
+   and supporting materials ("Software") are the exclusive property of
+   Matan Mishali. All rights are reserved.
+
+2. RESTRICTIONS
+   You may NOT, without prior written permission from the author(s):
+
+   a) Copy, reproduce, distribute, publish, or transmit the Software or
+      any portion thereof in any form or by any means.
+
+   b) Modify, adapt, translate, reverse engineer, decompile, disassemble,
+      or create derivative works based on the Software.
+
+   c) Sublicense, sell, rent, lease, transfer, or otherwise make the
+      Software available to any third party.
+
+   d) Remove or alter any proprietary notices, labels, or marks on the
+      Software.
+
+3. AUTHORIZED USE
+   This Software is intended solely for use by authorized personnel in
+   controlled security research and penetration testing environments,
+   strictly within the bounds of applicable law and only against systems
+   for which explicit written authorization has been obtained.
+
+4. NO WARRANTY
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+   IN NO EVENT SHALL MATAN MISHALI BE LIABLE FOR ANY CLAIM, DAMAGES, OR
+   OTHER LIABILITY ARISING FROM THE USE OF OR INABILITY TO USE THE SOFTWARE.
+
+5. LEGAL COMPLIANCE
+   The user assumes full responsibility for ensuring that all use of this
+   Software complies with applicable local, national, and international laws.
+   Unauthorized use against systems without explicit permission is illegal
+   and strictly prohibited.
+
+6. TERMINATION
+   Any breach of these terms immediately and automatically terminates your
+   right to use the Software. Upon termination, you must destroy all copies
+   of the Software in your possession.
+
+For licensing inquiries, contact Matan Mishali directly.
