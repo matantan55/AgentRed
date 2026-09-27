@@ -1,10 +1,26 @@
 // main.cpp — demo: show which process PickRandomSignedProcess selects
+// Compile (MinGW):
+//   x86_64-w64-mingw32-g++ --static testing.cpp -o proc.exe -lwintrust
 // Compile (MSVC):
 //   cl /std:c++17 /W3 main.cpp /link wintrust.lib
-// Compile (MinGW):
-//   g++ -std=c++17 main.cpp -o picker.exe -lwintrust -lntdll
 
 #include "process_steal.h"
+
+// ── Convert wstring to narrow string for printf ──────────────────────────────
+// Avoids mixing printf/wprintf which breaks on MinGW CRT
+static std::string W(const std::wstring& ws)
+{
+    if (ws.empty()) return {};
+    int sz = WideCharToMultiByte(CP_ACP, 0, ws.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    std::string s(sz - 1, '\0');
+    WideCharToMultiByte(CP_ACP, 0, ws.c_str(), -1, s.data(), sz, nullptr, nullptr);
+    return s;
+}
+
+static std::string W(const wchar_t* ws)
+{
+    return ws ? W(std::wstring(ws)) : std::string("<null>");
+}
 
 // ── Resolve token user string for display ────────────────────────────────────
 static std::wstring GetTokenUser(DWORD pid)
@@ -33,9 +49,7 @@ static std::wstring GetTokenUser(DWORD pid)
         DWORD nLen = 256, dLen = 256;
         SID_NAME_USE use;
         if (LookupAccountSidW(NULL, tu->User.Sid, name, &nLen, domain, &dLen, &use))
-        {
             result = std::wstring(domain) + L"\\" + name;
-        }
     }
 
     CloseHandle(hTok);
@@ -69,31 +83,40 @@ static const wchar_t* GetIntegrityLevel(DWORD pid)
             tml->Label.Sid,
             *GetSidSubAuthorityCount(tml->Label.Sid) - 1);
 
-        if      (*subAuth < SECURITY_MANDATORY_LOW_RID)      label = L"Untrusted";
-        else if (*subAuth < SECURITY_MANDATORY_MEDIUM_RID)   label = L"Low";
-        else if (*subAuth < SECURITY_MANDATORY_HIGH_RID)     label = L"Medium";
-        else if (*subAuth < SECURITY_MANDATORY_SYSTEM_RID)   label = L"High";
-        else                                                  label = L"System";
+        if      (*subAuth < SECURITY_MANDATORY_LOW_RID)    label = L"Untrusted";
+        else if (*subAuth < SECURITY_MANDATORY_MEDIUM_RID) label = L"Low";
+        else if (*subAuth < SECURITY_MANDATORY_HIGH_RID)   label = L"Medium";
+        else if (*subAuth < SECURITY_MANDATORY_SYSTEM_RID) label = L"High";
+        else                                               label = L"System";
     }
 
     CloseHandle(hTok);
     return label;
 }
 
-// ── Banner ───────────────────────────────────────────────────────────────────
-static void PrintBanner()
+// ── Simple ASCII table helpers ───────────────────────────────────────────────
+static void Row(const char* label, const char* value)
 {
-    printf("╔══════════════════════════════════════════════════╗\n");
-    printf("║       Process Picker — signed + unmonitored      ║\n");
-    printf("╚══════════════════════════════════════════════════╝\n\n");
+    printf("  %-22s: %s\n", label, value);
 }
+static void Row(const char* label, DWORD value)
+{
+    char buf[32];
+    sprintf(buf, "%lu", value);
+    Row(label, buf);
+}
+static void Divider() { printf("  %s\n", std::string(50, '-').c_str()); }
 
 // ─────────────────────────────────────────────────────────────────────────────
 int main()
 {
-    PrintBanner();
+    // Set console to UTF-8 so narrow strings with non-ASCII don't garble
+    SetConsoleOutputCP(CP_UTF8);
 
-    // 1. Init ntdll resolver (needed by ReadRemoteProcessStrings)
+    printf("\n");
+    printf("  === Process Picker: signed + unmonitored ===\n\n");
+
+    // 1. Init ntdll resolver
     if (!InitNtdll())
     {
         fprintf(stderr, "[-] Failed to resolve NtQueryInformationProcess.\n");
@@ -110,51 +133,39 @@ int main()
         return 1;
     }
 
-    // 3. Print full details
+    // 3. Print details — all via printf with narrow strings (no wprintf)
     printf("\n");
-    printf("┌─────────────────────────────────────────────────────┐\n");
-    printf("│                  SELECTED PROCESS                   │\n");
-    printf("├──────────────────────┬──────────────────────────────┤\n");
-    printf("│ PID                  │ %-28lu │\n", pick.pid);
-    wprintf(L"│ Name                 │ %-28ws │\n", pick.exeName.c_str());
-    wprintf(L"│ Image path           │ %-28ws │\n", pick.imagePath.c_str());
-
-    // Token user
-    std::wstring tokenUser = GetTokenUser(pick.pid);
-    wprintf(L"│ Token user           │ %-28ws │\n", tokenUser.c_str());
-
-    // Integrity level
-    const wchar_t* integrity = GetIntegrityLevel(pick.pid);
-    wprintf(L"│ Integrity level      │ %-28ws │\n", integrity);
-
-    // Thread count
-    DWORD threads = GetThreadCount(pick.pid);
-    printf("│ Thread count         │ %-28lu │\n", threads);
-
-    // Session
+    Divider();
+    printf("  SELECTED PROCESS\n");
+    Divider();
+    Row("PID",               pick.pid);
+    Row("Name",              W(pick.exeName).c_str());
+    Row("Image path",        W(pick.imagePath).c_str());
+    Row("Token user",        W(GetTokenUser(pick.pid)).c_str());
+    Row("Integrity level",   W(GetIntegrityLevel(pick.pid)).c_str());
+    Row("Thread count",      GetThreadCount(pick.pid));
     DWORD sessionId = 0;
     ProcessIdToSessionId(pick.pid, &sessionId);
-    printf("│ Session              │ %-28lu │\n", sessionId);
+    Row("Session",           sessionId);
+    Divider();
+    Row("Authenticode signed", "YES");
+    Row("EDR DLLs detected",   "NO");
+    Row("Debugger attached",   "NO");
+    Divider();
 
-    printf("├──────────────────────┴──────────────────────────────┤\n");
-    printf("│ Authenticode signed  │ YES                          │\n");
-    printf("│ EDR DLLs detected    │ NO                           │\n");
-    printf("│ Debugger attached    │ NO                           │\n");
-    printf("└──────────────────────────────────────────────────────┘\n");
-
-    // 4. Read PEB strings
-    printf("\n[*] Reading PEB strings from target...\n");
+    // 4. PEB strings
+    printf("\n[*] Reading PEB strings from target...\n\n");
     ProcessStrings strings;
     if (ReadRemoteProcessStrings(pick.pid, strings))
     {
-        wprintf(L"\n    CommandLine   : %ws\n", strings.commandLine.c_str());
-        wprintf(L"    ImagePathName : %ws\n",   strings.imagePathName.c_str());
+        Row("CommandLine",   W(strings.commandLine).c_str());
+        Row("ImagePathName", W(strings.imagePathName).c_str());
         if (!strings.windowTitle.empty())
-            wprintf(L"    WindowTitle   : %ws\n", strings.windowTitle.c_str());
+            Row("WindowTitle", W(strings.windowTitle).c_str());
     }
     else
     {
-        printf("    (PEB read failed — process may have restricted access)\n");
+        printf("  (PEB read failed - process may have restricted access)\n");
     }
 
     printf("\n[*] Done. Press Enter to exit...\n");
