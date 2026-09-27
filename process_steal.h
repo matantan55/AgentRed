@@ -12,6 +12,20 @@
 #pragma comment(lib, "wintrust.lib")
 
 // ─────────────────────────────────────────────────────────────────────────────
+// WtoA — convert wide string to narrow for printf (MinGW-safe, no %ls/%ws)
+// ─────────────────────────────────────────────────────────────────────────────
+static std::string WtoA(const wchar_t* ws)
+{
+    if (!ws || !ws[0]) return {};
+    int n = WideCharToMultiByte(CP_ACP, 0, ws, -1, nullptr, 0, nullptr, nullptr);
+    if (n <= 0) return {};
+    std::string s(n - 1, '\0');
+    WideCharToMultiByte(CP_ACP, 0, ws, -1, &s[0], n, nullptr, nullptr);
+    return s;
+}
+static std::string WtoA(const std::wstring& ws) { return WtoA(ws.c_str()); }
+
+// ─────────────────────────────────────────────────────────────────────────────
 // NtQueryInformationProcess — import dynamically so we don't need a .lib
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -384,8 +398,8 @@ static SignedProcessInfo PickRandomSignedProcess(DWORD maxAttempts = 48)
         result.pid       = e.pid;
         result.exeName   = e.exeName;
         result.imagePath = path;
-        printf("[+] Selected signed + unmonitored process: PID %-6lu %ls\n",
-               result.pid, result.exeName.c_str());
+        printf("[+] Selected signed + unmonitored process: PID %-6lu %s\n",
+               result.pid, WtoA(result.exeName).c_str());
         return result;
     }
 
@@ -482,7 +496,7 @@ static HANDLE StealProcessToken(DWORD sourcePid, bool impersonateOnly = true)
             DWORD nLen = 256, dLen = 256;
             SID_NAME_USE use;
             if (LookupAccountSidW(NULL, tu->User.Sid, name, &nLen, domain, &dLen, &use))
-                printf("[*] Source token user: %ls\\%ls\n", domain, name);
+                printf("[*] Source token user: %s\\%s\n", WtoA(domain).c_str(), WtoA(name).c_str());
         }
     }
 
@@ -604,17 +618,17 @@ static void ApplyToCurrentProcess(const ProcessStrings& src, DWORD sourcePid = 0
            GetCurrentProcessId());
 
     // CommandLine
-    printf("    CommandLine   : %ls\n", src.commandLine.c_str());
+    printf("    CommandLine   : %s\n", WtoA(src.commandLine).c_str());
     ApplyUnicodeString(&params->CommandLine, src.commandLine);
 
     // ImagePathName
-    printf("    ImagePathName : %ls\n", src.imagePathName.c_str());
+    printf("    ImagePathName : %s\n", WtoA(src.imagePathName).c_str());
     ApplyUnicodeString(&params->ImagePathName, src.imagePathName);
 
     // Console title
     if (!src.windowTitle.empty())
     {
-        printf("    WindowTitle   : %ls\n", src.windowTitle.c_str());
+        printf("    WindowTitle   : %s\n", WtoA(src.windowTitle).c_str());
         SetConsoleTitleW(src.windowTitle.c_str());
     }
     else if (!src.imagePathName.empty())
