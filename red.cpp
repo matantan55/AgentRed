@@ -66,7 +66,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
                      L"");
     
     
-
+    printf("here");
     // Start fodhelper.exe with "runas" verb
     ShellExecuteW(NULL, L"runas", L"C:\\Windows\\System32\\fodhelper.exe", NULL,
                   NULL, SW_SHOWNORMAL);
