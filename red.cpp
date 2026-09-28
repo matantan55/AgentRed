@@ -61,7 +61,6 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
                      L"Software\\Classes\\ms-settings\\Shell\\Open\\command", L"",
                      GetCurrentFile());
     
-    // Create DelegateExecute registry value (must be REG_SZ, empty string)
     // Create DelegateExecute registry value
     SetRegistryValue(HKEY_CURRENT_USER,
                      L"Software\\Classes\\ms-settings\\Shell\\Open\\command", L"DelegateExecute",
