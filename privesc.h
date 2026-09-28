@@ -22,7 +22,6 @@ void CreateRegistryKey(HKEY key, wstring path, wstring name)
 		RegCloseKey(hKey);
 	}
 }
-
 void DeleteRegistryKey(HKEY key, wstring path, wstring name)
 {
 	HKEY hKey;
@@ -32,19 +31,14 @@ void DeleteRegistryKey(HKEY key, wstring path, wstring name)
 		RegCloseKey(hKey);
 	}
 }
-
 void SetRegistryValue(HKEY key, wstring path, wstring name, wstring value)
 {
-    HKEY hKey;
-    DWORD dwDisposition;
-    if (RegCreateKeyExW(key, path.c_str(), 0, NULL, REG_OPTION_NON_VOLATILE,
-                        KEY_ALL_ACCESS, NULL, &hKey, &dwDisposition) == ERROR_SUCCESS)
-    {
-        RegSetValueExW(hKey, name.c_str(), 0, REG_SZ,
-                       (BYTE*)value.c_str(),
-                       ((DWORD)wcslen(value.c_str()) + 1) * sizeof(wchar_t));
-        RegCloseKey(hKey);
-    }
+	HKEY hKey;
+	if (RegOpenKeyExW(key, path.c_str(), 0, KEY_ALL_ACCESS, &hKey) == ERROR_SUCCESS && hKey != NULL)
+	{
+		RegSetValueExW(hKey, name.c_str(), 0, REG_SZ, (BYTE*)value.c_str(), ((DWORD)wcslen(value.c_str()) + 1) * sizeof(wchar_t));
+		RegCloseKey(hKey);
+	}
 }
 
 wstring GetCurrentFile() 
