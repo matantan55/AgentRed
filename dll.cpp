@@ -275,9 +275,9 @@ inline Value err_resp(const std::string& msg) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Config (read from environment variables at startup)
 // ─────────────────────────────────────────────────────────────────────────────
-static std::string g_host  = "127.0.0.1";
+static std::string g_host  = "192.168.1.20";
 static int         g_port  = 4444;
-static std::string g_token = "changeme";
+static std::string g_token = "token";
 
 static void load_config() {
     auto env = [](const char* name, const std::string& def) -> std::string {

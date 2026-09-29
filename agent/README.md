@@ -47,7 +47,7 @@ running on 127.0.0.1:4444; the busy test additionally needs
 ## Setup
 
 ```bash
-cd ~/Downloads/agent_dev
+cd ~/AntiGravity/AgentRed/agent
 uv venv --python 3.14 .venv          # already done
 uv pip install --python .venv/bin/python textual
 ```
