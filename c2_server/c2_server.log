@@ -1,0 +1,19 @@
+2026-09-29 13:40:13,677 [WARNING] C2 server (NO TLS) on 127.0.0.1:4555 — use --certfile/--keyfile in production!
+2026-09-29 13:40:13,677 [INFO] Loaded modules: ['ssh', 'rdp', 'registry', 'activity']
+2026-09-29 13:40:13,677 [INFO] Auth token env: C2_AUTH_TOKEN  (current value hidden)
+2026-09-29 13:40:14,633 [INFO] New connection from 127.0.0.1:52108
+2026-09-29 13:40:14,633 [WARNING] Auth failure from 127.0.0.1:52108
+2026-09-29 13:40:14,634 [INFO] Disconnected: 127.0.0.1:52108 [role=operator]
+2026-09-29 13:40:14,634 [INFO] New connection from 127.0.0.1:52109
+2026-09-29 13:40:14,634 [INFO] Authenticated: 127.0.0.1:52109  role=operator
+2026-09-29 13:40:14,635 [INFO] Dispatch module='activity' action='processes' by 127.0.0.1:52109
+2026-09-29 13:40:14,698 [INFO] Dispatch module='registry' action='list_keys' by 127.0.0.1:52109
+2026-09-29 13:40:14,698 [INFO] Relay module='notify' action='start' → agent
+2026-09-29 13:40:14,698 [INFO] New connection from 127.0.0.1:52110
+2026-09-29 13:40:14,698 [INFO] Authenticated: 127.0.0.1:52110  role=agent
+2026-09-29 13:40:14,699 [INFO] Push event 'notification' from agent 127.0.0.1:52110
+2026-09-29 13:40:15,004 [WARNING] Unexpected agent response (no pending relay): {'status': 'ok', 'note': 'stray response, no pending relay'}
+2026-09-29 13:40:15,309 [INFO] Relay module='shell' action='status' → agent
+2026-09-29 13:40:15,513 [INFO] Disconnected: 127.0.0.1:52110 [role=agent]
+2026-09-29 13:40:15,513 [INFO] Shutting down.
+2026-09-29 13:40:15,513 [INFO] Disconnected: 127.0.0.1:52109 [role=operator]
