@@ -296,7 +296,7 @@ class ClientHandler(threading.Thread):
 class C2Server:
     def __init__(
         self,
-        host: str   = "0.0.0.0",
+        host: str   = "127.0.0.1",
         port: int   = 4444,
         certfile: str | None = None,
         keyfile:  str | None = None,
@@ -350,7 +350,7 @@ def parse_args():
     p = argparse.ArgumentParser(
         description="Educational C2 Server — for lab/course use only."
     )
-    p.add_argument("--host",     default="0.0.0.0")
+    p.add_argument("--host",     default="127.0.0.1")
     p.add_argument("--port",     type=int, default=4444)
     p.add_argument("--certfile", default=None)
     p.add_argument("--keyfile",  default=None)

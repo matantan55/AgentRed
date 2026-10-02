@@ -17,3 +17,80 @@
 2026-09-29 13:40:15,513 [INFO] Disconnected: 127.0.0.1:52110 [role=agent]
 2026-09-29 13:40:15,513 [INFO] Shutting down.
 2026-09-29 13:40:15,513 [INFO] Disconnected: 127.0.0.1:52109 [role=operator]
+2026-09-29 17:52:20,146 [WARNING] C2 server (NO TLS) on 0.0.0.0:4444 — use --certfile/--keyfile in production!
+2026-09-29 17:52:20,146 [INFO] Loaded modules: ['ssh', 'rdp', 'registry', 'activity']
+2026-09-29 17:52:20,146 [INFO] Auth token env: C2_AUTH_TOKEN  (current value hidden)
+2026-09-29 17:53:27,725 [INFO] New connection from 127.0.0.1:55146
+2026-09-29 17:53:27,726 [INFO] Authenticated: 127.0.0.1:55146  role=operator
+2026-09-29 17:54:24,699 [INFO] Dispatch module='activity' action='network_connections' by 127.0.0.1:55146
+2026-09-29 17:54:24,704 [ERROR] Module 'activity' raised: (pid=29546)
+Traceback (most recent call last):
+  File "/Users/matanmishali/AntiGravity/AgentRed/.venv/lib/python3.14/site-packages/psutil/_psosx.py", line 347, in wrapper
+    return fun(self, *args, **kwargs)
+  File "/Users/matanmishali/AntiGravity/AgentRed/.venv/lib/python3.14/site-packages/psutil/_psosx.py", line 508, in net_connections
+    rawlist = cext.proc_net_connections(self.pid, families, types)
+PermissionError: [Errno 1] Operation not permitted (originated from proc_pidinfo(PROC_PIDLISTFDS) 1/2)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/matanmishali/AntiGravity/AgentRed/c2_server/server.py", line 257, in _handle_line
+    result = module.handle(payload)
+  File "/Users/matanmishali/AntiGravity/AgentRed/c2_server/modules/activity_module.py", line 65, in handle
+    return fn(payload)
+  File "/Users/matanmishali/AntiGravity/AgentRed/c2_server/modules/activity_module.py", line 153, in _network_connections
+    for c in psutil.net_connections(kind="inet"):
+             ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/matanmishali/AntiGravity/AgentRed/.venv/lib/python3.14/site-packages/psutil/__init__.py", line 2225, in net_connections
+    return _psplatform.net_connections(kind)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/Users/matanmishali/AntiGravity/AgentRed/.venv/lib/python3.14/site-packages/psutil/_psosx.py", line 233, in net_connections
+    cons = Process(pid).net_connections(kind)
+  File "/Users/matanmishali/AntiGravity/AgentRed/.venv/lib/python3.14/site-packages/psutil/_psosx.py", line 353, in wrapper
+    raise AccessDenied(pid, name) from err
+psutil.AccessDenied: (pid=29546)
+2026-09-29 17:54:29,120 [INFO] Dispatch module='activity' action='network_connections' by 127.0.0.1:55146
+2026-09-29 17:54:29,123 [ERROR] Module 'activity' raised: (pid=29546)
+Traceback (most recent call last):
+  File "/Users/matanmishali/AntiGravity/AgentRed/.venv/lib/python3.14/site-packages/psutil/_psosx.py", line 347, in wrapper
+    return fun(self, *args, **kwargs)
+  File "/Users/matanmishali/AntiGravity/AgentRed/.venv/lib/python3.14/site-packages/psutil/_psosx.py", line 508, in net_connections
+    rawlist = cext.proc_net_connections(self.pid, families, types)
+PermissionError: [Errno 1] Operation not permitted (originated from proc_pidinfo(PROC_PIDLISTFDS) 1/2)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/matanmishali/AntiGravity/AgentRed/c2_server/server.py", line 257, in _handle_line
+    result = module.handle(payload)
+  File "/Users/matanmishali/AntiGravity/AgentRed/c2_server/modules/activity_module.py", line 65, in handle
+    return fn(payload)
+  File "/Users/matanmishali/AntiGravity/AgentRed/c2_server/modules/activity_module.py", line 153, in _network_connections
+    for c in psutil.net_connections(kind="inet"):
+             ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/matanmishali/AntiGravity/AgentRed/.venv/lib/python3.14/site-packages/psutil/__init__.py", line 2225, in net_connections
+    return _psplatform.net_connections(kind)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/Users/matanmishali/AntiGravity/AgentRed/.venv/lib/python3.14/site-packages/psutil/_psosx.py", line 233, in net_connections
+    cons = Process(pid).net_connections(kind)
+  File "/Users/matanmishali/AntiGravity/AgentRed/.venv/lib/python3.14/site-packages/psutil/_psosx.py", line 353, in wrapper
+    raise AccessDenied(pid, name) from err
+psutil.AccessDenied: (pid=29546)
+2026-09-29 17:54:30,602 [INFO] Dispatch module='activity' action='system_stats' by 127.0.0.1:55146
+2026-09-29 17:54:39,367 [INFO] Dispatch module='activity' action='network' by 127.0.0.1:55146
+2026-09-29 17:54:41,888 [INFO] Dispatch module='activity' action='connections' by 127.0.0.1:55146
+2026-09-29 17:54:44,606 [INFO] Dispatch module='activity' action='netstat' by 127.0.0.1:55146
+2026-09-29 17:54:47,016 [INFO] Dispatch module='activity' action='help' by 127.0.0.1:55146
+2026-09-29 17:55:54,807 [INFO] Shutting down.
+2026-09-29 17:56:21,703 [WARNING] C2 server (NO TLS) on 0.0.0.0:4444 — use --certfile/--keyfile in production!
+2026-09-29 17:56:21,704 [INFO] Loaded modules: ['ssh', 'rdp', 'registry', 'activity']
+2026-09-29 17:56:21,704 [INFO] Auth token env: C2_AUTH_TOKEN  (current value hidden)
+2026-09-29 17:56:23,629 [INFO] Shutting down.
+2026-09-29 17:56:37,489 [WARNING] C2 server (NO TLS) on 0.0.0.0:4444 — use --certfile/--keyfile in production!
+2026-09-29 17:56:37,489 [INFO] Loaded modules: ['ssh', 'rdp', 'registry', 'activity']
+2026-09-29 17:56:37,489 [INFO] Auth token env: C2_AUTH_TOKEN  (current value hidden)
+2026-09-29 18:02:31,321 [INFO] Shutting down.
+2026-09-29 18:03:27,484 [WARNING] C2 server (NO TLS) on 127.0.0.1:4444 — use --certfile/--keyfile in production!
+2026-09-29 18:03:27,485 [INFO] Loaded modules: ['ssh', 'rdp', 'registry', 'activity']
+2026-09-29 18:03:27,485 [INFO] Auth token env: C2_AUTH_TOKEN  (current value hidden)
+2026-09-29 18:11:39,969 [INFO] Shutting down.
