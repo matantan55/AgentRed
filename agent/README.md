@@ -2,7 +2,7 @@
 
 An AI agent that wraps `client.py` so a **human operates in plain language**
 and the **agent performs the operations** on the lab Windows target through
-the existing C2 protocol. Built for a cyber-security course lab; the agent
+the existing C2 protocol. Built for red-team research and lab experimentation; the agent
 adds no capabilities beyond what `client.py` already dispatches.
 
 ```
@@ -75,7 +75,7 @@ ollama serve & ollama pull llama3.1:8b
 ```
 
 Lab defaults are **127.0.0.1:4444 with token `labtoken`** everywhere (mock,
-`agent.py`, `agent_tui.py`, `agent_tools.py`). **Pointing at your real course
+`agent.py`, `agent_tui.py`, `agent_tools.py`). **Pointing at your target C2
 server:** pass `--host/--port` and either `--token <server token>` or export
 `C2_AUTH_TOKEN` (env beats the default). `client.py` is untouched (still
 defaults `changeme`, matching `server.py`). The reverse-shell listener
@@ -102,7 +102,7 @@ shares all logic with the TUI.
 - **Files via that channel:** `file_read`, `dir_list`, `file_send` (local → target, base64-chunked `echo` + `certutil -decode`; there is no file-transfer module on the wire, this routes around that with existing primitives)
 - **Escape hatch:** `raw` — allowlisted modules only
 
-## Safety model (course talking points)
+## Safety model (operational principles)
 
 1. **Destructive gate** — every target-mutating tool returns
    `needs_confirmation` unless the human approved it; the driver asks
@@ -120,7 +120,7 @@ shares all logic with the TUI.
 
 - **"Authentication failed"** → the agent reached a server, but the token
   is wrong *for that server*. Mock wants `--token labtoken`; the real
-  course server wants its `C2_AUTH_TOKEN` (default `changeme`). The agent
+  C2 server wants its `C2_AUTH_TOKEN` (default `changeme`). The agent
   error line now says exactly this. To see who owns the port and what it
   accepts: `lsof -nP -iTCP:4444 -sTCP:LISTEN`, then
   `.venv/bin/python tests/auth_probe.py <token>` (prints the server's reply for

@@ -348,7 +348,7 @@ class C2Server:
 
 def parse_args():
     p = argparse.ArgumentParser(
-        description="Educational C2 Server — for lab/course use only."
+        description="C2 Server — for authorized research/lab use only."
     )
     p.add_argument("--host",     default="127.0.0.1")
     p.add_argument("--port",     type=int, default=4444)

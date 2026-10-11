@@ -1,5 +1,5 @@
 # C2 Server — Usage Guide
-> **Educational project** — built for a cybersecurity course. Use only on machines you own or have explicit written permission to test on.
+> **Security Research & Testing** — Use only on machines you own or have explicit written permission to test on.
 
 ---
 

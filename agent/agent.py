@@ -80,7 +80,7 @@ def llm_call(cfg, messages: list[dict],
         headers["Authorization"] = f"Bearer {cfg.api_key}"
     if "openrouter.ai" in cfg.base_url:  # OpenRouter attribution headers
         headers["HTTP-Referer"] = "http://localhost/agent-dev-lab"
-        headers["X-Title"] = "C2 Research Operator (course lab)"
+        headers["X-Title"] = "C2 Research Operator"
     body = json.dumps({
         "model": cfg.model,
         "messages": messages,

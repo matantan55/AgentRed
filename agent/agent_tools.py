@@ -87,7 +87,7 @@ def connect(host: str, port: int, token: str,
             f"Authentication failed — the server at {host}:{port} rejected the "
             f"token you presented ({token!r}). "
             "Lab mock default token: 'labtoken' (pass --token labtoken). "
-            "Real course server: its C2_AUTH_TOKEN (default 'changeme'). "
+            "Target C2 server: its C2_AUTH_TOKEN (default 'changeme'). "
             f"Process currently owning port {port}: {_listener_info(port)}")
     _session = s
     return {"status": "ok", "message": f"Authenticated to {host}:{port}"}
