@@ -1,0 +1,121 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AgentRed C2 Wire Protocol Specification",
+  "description": "Formal schema for newline-delimited JSON wire messages between Operators, C2 Relay Server, and Victim Implants.",
+  "type": "object",
+  "oneOf": [
+    { "$ref": "#/definitions/HandshakeMessage" },
+    { "$ref": "#/definitions/AuthResponseMessage" },
+    { "$ref": "#/definitions/CommandRequestMessage" },
+    { "$ref": "#/definitions/StandardResponseMessage" },
+    { "$ref": "#/definitions/PushEventMessage" }
+  ],
+  "definitions": {
+    "HandshakeMessage": {
+      "type": "object",
+      "description": "First message sent immediately after TCP connection establishment.",
+      "required": ["token"],
+      "properties": {
+        "token": {
+          "type": "string",
+          "description": "Shared authentication secret (matches C2_AUTH_TOKEN)."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["operator", "agent"],
+          "default": "operator",
+          "description": "Role identification. 'operator' submits commands; 'agent' is the victim implant."
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuthResponseMessage": {
+      "type": "object",
+      "description": "Server reply to an authentication handshake.",
+      "required": ["status", "message"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["ok", "error"]
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "CommandRequestMessage": {
+      "type": "object",
+      "description": "Dispatched by operators to invoke module actions.",
+      "required": ["module", "payload"],
+      "properties": {
+        "module": {
+          "type": "string",
+          "enum": ["activity", "registry", "ssh", "rdp", "notify", "shell", "defender"],
+          "description": "Target module subsystem name."
+        },
+        "payload": {
+          "type": "object",
+          "required": ["action"],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Action primitive within the selected module."
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "StandardResponseMessage": {
+      "type": "object",
+      "description": "Synchronous response returned to the operator following command execution.",
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["ok", "error", "needs_confirmation"]
+        },
+        "message": {
+          "type": "string",
+          "description": "Informational status description or error message."
+        }
+      },
+      "additionalProperties": true
+    },
+    "PushEventMessage": {
+      "type": "object",
+      "description": "Asynchronous push telemetry emitted by the victim implant and broadcasted to operators.",
+      "required": ["event"],
+      "properties": {
+        "event": {
+          "type": "string",
+          "enum": ["window_focus", "notification_seen"],
+          "description": "Event category identifier."
+        },
+        "timestamp": {
+          "type": "integer",
+          "description": "Epoch timestamp in seconds."
+        },
+        "process": {
+          "type": "string",
+          "description": "Executable name of the active foreground window."
+        },
+        "title": {
+          "type": "string",
+          "description": "Window title or toast notification title."
+        },
+        "hwnd": {
+          "type": "integer",
+          "description": "Win32 window handle."
+        },
+        "message": {
+          "type": "string",
+          "description": "Notification message body if applicable."
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

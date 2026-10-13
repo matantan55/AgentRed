@@ -11,7 +11,7 @@ ATT&CK-grounded hunting notes with sources.
 ## Setup
 
 ```bash
-cd ~/Downloads/c2_server
+cd /Users/matanmishali/AntiGravity/AgentRed/c2_server
 uv venv mcp/.venv
 uv pip install --python mcp/.venv/bin/python "mcp" psutil   # already done in this checkout
 ```
@@ -28,8 +28,8 @@ mcp/.venv/bin/python mcp/smoke_test.py            # protocol-level test, all too
 ```yaml
 mcp_servers:
   c2-project:
-    command: /Users/matanmishali/Downloads/c2_server/mcp/.venv/bin/python
-    args: [/Users/matanmishali/Downloads/c2_server/mcp/c2_project_mcp.py]
+    command: /Users/matanmishali/AntiGravity/AgentRed/c2_server/mcp/.venv/bin/python
+    args: [/Users/matanmishali/AntiGravity/AgentRed/c2_server/mcp/c2_project_mcp.py]
 ```
 
 Restart Hermes; tools appear as `mcp_c2_project_<tool>`.

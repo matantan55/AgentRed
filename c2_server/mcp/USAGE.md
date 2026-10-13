@@ -113,7 +113,7 @@ analyst would see, and cited sources per topic. Topics:
 ## 3. Manual / scripted use (outside Hermes)
 
 ```bash
-cd ~/Downloads/c2_server
+cd /Users/matanmishali/AntiGravity/AgentRed/c2_server
 
 # protocol-level self-test over real stdio JSON-RPC (all 8 tools + jail check)
 mcp/.venv/bin/python mcp/smoke_test.py
@@ -144,8 +144,8 @@ Any stdio MCP client works with the same command:
 {
   "mcpServers": {
     "c2-project": {
-      "command": "/Users/matanmishali/Downloads/c2_server/mcp/.venv/bin/python",
-      "args": ["/Users/matanmishali/Downloads/c2_server/mcp/c2_project_mcp.py"]
+      "command": "/Users/matanmishali/AntiGravity/AgentRed/c2_server/mcp/.venv/bin/python",
+      "args": ["/Users/matanmishali/AntiGravity/AgentRed/c2_server/mcp/c2_project_mcp.py"]
     }
   }
 }

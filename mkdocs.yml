@@ -1,0 +1,66 @@
+site_name: "AgentRed Framework"
+site_description: "Advanced Adversary Simulation, Windows Evasion, Resilient Persistence & Autonomous C2 Operations"
+site_author: "AgentRed Security Research Team"
+repo_name: "matantan55/AgentRed"
+docs_dir: "."
+
+theme:
+  name: material
+  palette:
+    - scheme: slate
+      primary: red
+      accent: amber
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - scheme: default
+      primary: red
+      accent: amber
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - attr_list
+  - toc:
+      permalink: true
+
+nav:
+  - Overview:
+      - Introduction: README.md
+      - Documentation Hub: docs/README.md
+  - Operator & Field Guide:
+      - Operator & AI User Guide: docs/USER_GUIDE.md
+      - C2 Server Reference: c2_server/README.md
+      - AI Agent Operator: agent/README.md
+  - Technical Specifications:
+      - Full Technical Report: docs/DOCUMENTATION.md
+      - Code Intelligence MCP: c2_server/mcp/README.md
+      - MCP Tooling Guide: c2_server/mcp/USAGE.md
+  - Protocol & API:
+      - Wire Protocol Specification: docs/PROTOCOL.md
+  - Briefings & Detections:
+      - Technical Presentation Deck: docs/PRESENTATION.md

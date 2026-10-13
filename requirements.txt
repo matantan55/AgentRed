@@ -1,0 +1,20 @@
+# AgentRed Framework Unified Requirements
+# ========================================
+
+# Core C2 Server & Modules
+paramiko>=3.4.0
+psutil>=5.9.0
+
+# Autonomous AI Operator & TUI
+textual>=0.80.0
+requests>=2.31.0
+
+# Binary Analysis & Authenticode Spoofing
+tabulate>=0.9.0
+colorama>=0.4.6
+python-dotenv>=1.0.0
+
+# Documentation & Validation Tools (Optional)
+mkdocs>=1.5.0
+mkdocs-material>=9.5.0
+jsonschema>=4.20.0

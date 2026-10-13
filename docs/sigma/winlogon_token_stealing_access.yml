@@ -1,0 +1,32 @@
+title: Anomalous Process Access to Winlogon for Token Duplication
+id: e2b60451-c049-43d8-ba92-d64e1fa208c4
+status: experimental
+description: Detects non-system processes opening a handle to winlogon.exe with PROCESS_DUP_HANDLE or PROCESS_QUERY_INFORMATION access masks, commonly used in token stealing attacks to escalate to SYSTEM.
+references:
+    - https://attack.mitre.org/techniques/T1134/001/
+author: AgentRed Security Research Team
+date: 2026-10-13
+tags:
+    - attack.privilege_escalation
+    - attack.defense_evasion
+    - attack.t1134.001
+logsource:
+    category: process_access
+    product: windows
+detection:
+    selection:
+        TargetImage|endswith: '\winlogon.exe'
+        GrantedAccess|contains:
+            - '0x0040'   # PROCESS_DUP_HANDLE
+            - '0x1400'
+            - '0x1440'
+    filter_legitimate:
+        SourceImage|endswith:
+            - '\csrss.exe'
+            - '\lsass.exe'
+            - '\services.exe'
+            - '\wininit.exe'
+    condition: selection and not filter_legitimate
+falsepositives:
+    - Diagnostic or endpoint management software running with administrative rights.
+level: critical

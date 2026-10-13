@@ -1,0 +1,24 @@
+title: Persistence via AppInit_DLLs Registry Key Modification
+id: c5d2e731-0814-419b-8219-95a28bb0dcfe
+status: test
+description: Detects modification of AppInit_DLLs or LoadAppInit_DLLs registry values under Windows NT CurrentVersion, which allows arbitrary DLL injection into every GUI process using user32.dll.
+references:
+    - https://attack.mitre.org/techniques/T1546/010/
+author: AgentRed Security Research Team
+date: 2026-10-13
+tags:
+    - attack.persistence
+    - attack.t1546.010
+logsource:
+    category: registry_set
+    product: windows
+detection:
+    selection_registry:
+        TargetObject|contains:
+            - '\Microsoft\Windows NT\CurrentVersion\Windows\AppInit_DLLs'
+            - '\Microsoft\Windows NT\CurrentVersion\Windows\LoadAppInit_DLLs'
+            - '\Microsoft\Windows NT\CurrentVersion\Windows\RequireSignedAppInit_DLLs'
+    condition: selection_registry
+falsepositives:
+    - Legacy third-party antivirus, accessibility tools, or legacy enterprise management utilities.
+level: high

@@ -20,7 +20,7 @@ adds no capabilities beyond what `client.py` already dispatches.
 ## Project layout
 
 ```
-agent_dev/
+agent/
 ├── client.py              (existing) operator console + transport — imported, untouched
 ├── agent_tools.py         tool layer over client.py's C2Client
 ├── agent.py               headless/REPL agent (OpenRouter | local | --dry-run)

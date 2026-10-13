@@ -1,0 +1,24 @@
+title: UAC Bypass via Slui.exe File Association Hijack
+id: a8f41142-b91a-4c48-a00e-26f6eb942f71
+status: experimental
+description: Detects auto-elevated execution of slui.exe spawning child processes or abusing user-mode registry associations in HKCU:\Software\Classes\exefile to bypass UAC without prompt.
+references:
+    - https://attack.mitre.org/techniques/T1548/002/
+author: AgentRed Security Research Team
+date: 2026-10-13
+tags:
+    - attack.privilege_escalation
+    - attack.t1548.002
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection_parent:
+        ParentImage|endswith: '\slui.exe'
+    filter_legitimate:
+        Image|endswith:
+            - '\slui.exe'
+    condition: selection_parent and not filter_legitimate
+falsepositives:
+    - Highly rare in standard enterprise environments. Legacy activation troubleshooting scripts may trigger false positives.
+level: high

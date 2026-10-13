@@ -21,21 +21,30 @@ This document serves as the formal technical specification for the AgentRed fram
    - 4.1 [UAC Auto-Elevate Registry Hijacking](#41-uac-auto-elevate-registry-hijacking)
    - 4.2 [Token Stealing from SYSTEM Processes](#42-token-stealing-from-system-processes)
    - 4.3 [Windows Defender Exclusion Tampering](#43-windows-defender-exclusion-tampering)
+   - 4.4 [Advanced Research Exploits & Local PrivEsc PoCs (`files/`)](#44-advanced-research-exploits--local-privesc-pocs-files)
 5. [Persistence & Self-Healing Watchdog](#5-persistence--self-healing-watchdog)
    - 5.1 [AppInit_DLLs In-Memory Injection](#51-appinit_dlls-in-memory-injection)
    - 5.2 [DACL Anti-Deletion File Locking](#52-dacl-anti-deletion-file-locking)
    - 5.3 [SAFE.exe Self-Healing Watchdog](#53-safeexe-self-healing-watchdog)
+   - 5.4 [Windows 10/11 Secure Boot & AppInit_DLLs Constraints](#54-windows-1011-secure-boot--appinit_dlls-constraints)
 6. [Command & Control (C2) Engine](#6-command--control-c2-engine)
    - 6.1 [Asynchronous JSON Wire Protocol](#61-asynchronous-json-wire-protocol)
    - 6.2 [Push Event Telemetry & WinEvent Hooks](#62-push-event-telemetry--winevent-hooks)
    - 6.3 [Out-of-Band Direct TCP Reverse Shell](#63-out-of-band-direct-tcp-reverse-shell)
 7. [Autonomous AI Operator & Tool Ecosystem](#7-autonomous-ai-operator--tool-ecosystem)
    - 7.1 [Textual TUI & Human-in-the-Loop Safety Gates](#71-textual-tui--human-in-the-loop-safety-gates)
-   - 7.2 [Model Context Protocol (FastMCP) Integration](#72-model-context-protocol-fastmcp-integration)
+   - 7.2 [Tool Abstraction vs. FastMCP Code Intelligence](#72-tool-abstraction-vs-fastmcp-code-intelligence)
    - 7.3 [Comprehensive Operator & Agent User Guide](#73-comprehensive-operator--agent-user-guide)
 8. [MITRE ATT&CK Mapping Matrix](#8-mitre-attck-mapping-matrix)
 9. [Blue Team Detection Engineering & Forensics](#9-blue-team-detection-engineering--forensics)
+   - 9.1 [Expanded Sysmon Detection Telemetry](#91-expanded-sysmon-detection-telemetry)
+   - 9.2 [YARA Detection Rule](#92-yara-detection-rule)
+   - 9.3 [Production Sigma Detection Rules](#93-production-sigma-detection-rules)
+   - 9.4 [Memory Forensics & Volatility 3 Analysis](#94-memory-forensics--volatility-3-analysis)
+   - 9.5 [Consolidated Indicators of Compromise (IOC) Matrix](#95-consolidated-indicators-of-compromise-ioc-matrix)
 10. [Remediation & Incident Response](#10-remediation--incident-response)
+    - 10.1 [Built-in Remediation via SAFE.exe (`/remove`)](#101-built-in-remediation-via-safeexe-remove)
+    - 10.2 [Post-Incident Remediation Checklist](#102-post-incident-remediation-checklist)
 
 ---
 
@@ -54,6 +63,44 @@ The framework simulates an **Advanced Persistent Threat (APT)** actor possessing
 ---
 
 ## 2. End-to-End System Architecture
+
+```mermaid
+graph TB
+    subgraph Operator Tier
+        TUI[agent_tui.py<br/>Autonomous AI Operator TUI]
+        CLI[client.py<br/>Interactive Operator Console]
+        MCP[c2_project_mcp.py<br/>FastMCP Code Intelligence]
+    end
+
+    subgraph Relay Tier
+        SRV[c2_server/server.py<br/>Asynchronous TCP/TLS Relay :4444]
+    end
+
+    subgraph Target Host - Execution & Elevation
+        DROP[red.cpp / main.exe<br/>Initial Dropper & Loader]
+        PEB[process_steal.h<br/>PEB String Masquerade]
+        UAC[red.cpp<br/>slui.exe Zero-Prompt UAC Bypass]
+        TOK[privesc.h<br/>winlogon.exe Token Duplication]
+    end
+
+    subgraph Target Host - In-Memory Persistence
+        DLL[AppInit_DLLs.dll<br/>Injected by user32.dll into GUI Apps]
+        SAFE[SAFE.exe<br/>Failsafe Watchdog & DACL Lock]
+        SHELL[Direct Reverse Shell<br/>Raw TCP Socket :4445]
+    end
+
+    TUI -->|JSON / TLS :4444| SRV
+    CLI -->|JSON / TLS :4444| SRV
+    SRV <-->|Forward Commands / Push Events :4444| DLL
+
+    DROP --> PEB
+    PEB --> UAC
+    UAC --> TOK
+    TOK -->|Sets HKLM AppInit Keys| DLL
+    TOK -->|Registers HKCU Run Watchdog| SAFE
+    SAFE -.->|Monitors & Auto-Repairs| DLL
+    DLL -->|Out-of-Band Direct TCP :4445| CLI
+```
 
 ```
                                   ┌────────────────────────┐
@@ -260,6 +307,27 @@ This adds the binary's path to Microsoft Defender's exclusion list, preventing o
 
 ---
 
+### 4.4 Advanced Research Exploits & Local PrivEsc PoCs (`files/`)
+
+The repository includes standalone exploit PoCs in the [`files/`](file:///Users/matanmishali/AntiGravity/AgentRed/files) directory exploring low-level kernel and service vulnerabilities:
+
+#### 1. CVE-2026-20817: Windows Error Reporting (WER) ALPC EoP ([`files/CVE-2026-20817_PoC.cpp`](file:///Users/matanmishali/AntiGravity/AgentRed/files/CVE-2026-20817_PoC.cpp))
+- **Vulnerability Architecture**: A Local Privilege Escalation flaw within the Windows Error Reporting service. The ALPC port `\WindowsErrorReportingService` exposes the `SvcElevatedLaunch` method (`0x0D`).
+- **Exploitation Mechanics**:
+  1. Creates an ALPC shared section containing an arbitrary command line.
+  2. Connects to `\WindowsErrorReportingService` using `NtAlpcConnectPort`.
+  3. Sends an ALPC message invoking method `0x0D`, instructing the service to spawn `WerFault.exe` which executes the command as `NT AUTHORITY\SYSTEM`.
+- **Privilege Outcome**: The resulting process token inherits `SeDebugPrivilege` and `SeImpersonatePrivilege`, providing an alternate escalation path if UAC registry hijacks are monitored.
+
+#### 2. CVE-2026-50656: RoguePlanet Defender TOCTOU Race ([`files/CVE-2026-50656.cpp`](file:///Users/matanmishali/AntiGravity/AgentRed/files/CVE-2026-50656.cpp))
+- **Mechanism**: Explores a Time-of-Check to Time-of-Use (TOCTOU) race condition during file quarantine operations by `MsMpEng.exe`.
+- **Analysis**: Creates directory junctions in `%TEMP%\RogueCheck_` pointing to system directories and simulates rapid file modification to verify if antivirus link resolution can be manipulated into writing arbitrary files with SYSTEM permissions.
+
+#### 3. Token-Based Antivirus Bypass ([`files/token_windefender_bypass.cpp`](file:///Users/matanmishali/AntiGravity/AgentRed/files/token_windefender_bypass.cpp))
+- **Mechanism**: Exercises token privilege filtering and token duplication directly to suppress Defender runtime interception without requiring administrative GUI interaction.
+
+---
+
 ## 5. Persistence & Self-Healing Watchdog
 
 ### 5.1 AppInit_DLLs In-Memory Injection
@@ -326,6 +394,28 @@ ea[0].Trustee.ptstrName    = (LPSTR)"Everyone";
 - **Loop Logic**: Every 10 seconds, `SAFE.exe` verifies that the `AppInit_DLLs` registry keys match the payload path.
 - **Auto-Recovery**: If a security analyst clears the `AppInit_DLLs` registry value, `SAFE.exe` rewires the registry key and resets the ACL permissions on disk.
 - **Safe Removal Mode**: Built into `SAFE.exe` via the `/remove` switch (`SAFE.exe /remove`), which resets DACL permissions and deregisters registry entries for authorized post-lab teardown.
+
+---
+
+### 5.4 Windows 10/11 Secure Boot & AppInit_DLLs Constraints
+
+A critical technical consideration in modern Windows internals is the behavior of `AppInit_DLLs` in environments protected by **UEFI Secure Boot**:
+
+1. **Secure Boot Automatic Suppression**:
+   - In standard Windows 10 and 11 configurations where UEFI Secure Boot is active, the operating system kernel and `user32.dll` automatically disable the `AppInit_DLLs` infrastructure globally, ignoring `LoadAppInit_DLLs = 1`.
+2. **Code Signing Requirement (`RequireSignedAppInit_DLLs`)**:
+   - When Secure Boot is disabled or configured in custom policy mode, Windows evaluates the registry value:
+     ```
+     HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Windows\RequireSignedAppInit_DLLs
+     ```
+   - If set to `1` (default on enterprise builds), `user32.dll` invokes `WinVerifyTrust()` on any candidate DLL and refuses injection if the binary lacks a valid, cryptographically trusted Authenticode certificate.
+3. **Lab Emulation Configuration**:
+   - In our adversary emulation architecture, the privilege escalation dropper (`red.cpp`) writes:
+     ```
+     LoadAppInit_DLLs = 1 (DWORD)
+     RequireSignedAppInit_DLLs = 0 (DWORD)
+     ```
+   - For authorized lab evaluations, test VMs must have Secure Boot disabled in firmware settings (or hypervisor settings) to observe `AppInit_DLLs` execution. This underscores why modern blue team defense centers on enforcing Secure Boot and monitoring `RequireSignedAppInit_DLLs` registry changes.
 
 ---
 
@@ -401,29 +491,46 @@ For interactive shell access, relying on JSON command encapsulation introduces p
 
 [`agent/agent_tui.py`](file:///Users/matanmishali/AntiGravity/AgentRed/agent/agent_tui.py) introduces an autonomous operator interface driven by LLMs (Claude 3.5 Sonnet, DeepSeek, or local Ollama instances) styled after modern developer terminal interfaces.
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ AgentRed Terminal Operator UI                                               │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ Operator: "Inspect running processes and check if any antivirus is active."│
-│ Agent: Reading process table via sysinfo & activity module...               │
-│ Target Response: 142 processes active. MsMpEng.exe detected.                │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ ⚠️ MUTATION DETECTED: reg_write HKLM\...\AppInit_DLLs                       │
-│ Reason: Establishing persistence on victim system.                          │
-│                                                                             │
-│                   [ APPROVE (Enter) ]    [ DENY (Esc) ]                     │
-└─────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+stateDiagram-v2
+    [*] --> OperatorInput: Operator types natural language prompt
+    OperatorInput --> LLMReasoning: LLM parses task & plans next action
+    LLMReasoning --> InspectTool: Proposes Tool Call
+
+    state InspectTool <<choice>>
+    InspectTool --> ExecuteAuto: Is Read-Only (sysinfo, processes, reg_read)
+    InspectTool --> ApprovalModal: Is Mutating (reg_write, shell_open, popup)
+
+    ExecuteAuto --> TargetExecution: Dispatch to C2 Server
+    ApprovalModal --> PromptUser: Render interactive modal with diff/reason
+
+    state PromptUser <<choice>>
+    PromptUser --> TargetExecution: Operator approves (Enter)
+    PromptUser --> CancelAction: Operator denies (Esc)
+
+    TargetExecution --> ObservationFeedback: Return observation JSON to LLM
+    CancelAction --> ObservationFeedback: Return "Permission Denied by Operator"
+    ObservationFeedback --> LLMReasoning: Next step / Final response
+    ObservationFeedback --> [*]: Task complete
 ```
 
 - **Tool Abstraction ([`agent_tools.py`](file:///Users/matanmishali/AntiGravity/AgentRed/agent/agent_tools.py))**:
-  Wraps the raw C2 commands into 38 distinct tools across system information, activity, registry manipulation, SSH, RDP, and notifications.
+  Wraps the raw C2 commands into 38 distinct tools across system information, activity, registry manipulation, SSH, RDP, file transfer, and notifications.
 - **Approval Gate**:
   Read-only operations (e.g., `sysinfo`, `processes`, `reg_read`) execute autonomously. High-risk mutating operations (e.g., `reg_write`, `reg_delete_key`, `shell_open`) halt execution, rendering an interactive modal requiring human operator authorization.
 
-### 7.2 Model Context Protocol (FastMCP) Integration
+### 7.2 Tool Abstraction vs. FastMCP Code Intelligence
 
-[`c2_server/mcp/c2_project_mcp.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2_server/mcp/c2_project_mcp.py) exposes the full capabilities of the C2 infrastructure over the **Model Context Protocol (MCP)** standard. External AI coding and reasoning assistants (such as Anthropic Claude Desktop or Cursor) can connect directly to the running C2 server and execute structured tools through standardized RPC calls.
+The architecture explicitly separates live operational execution from developer code intelligence:
+
+1. **Operational Agent Tool Layer ([`agent/agent_tools.py`](file:///Users/matanmishali/AntiGravity/AgentRed/agent/agent_tools.py))**:
+   - The functional bridge used by the autonomous agent (`agent.py` and `agent_tui.py`).
+   - Reuses `C2Client` from `client.py` to authenticate to the running C2 server and dispatch commands to live implants.
+   - Includes safety gates, confirmation handling, reverse shell channel management, and file delivery over cmd base64 chunking.
+2. **Code Intelligence FastMCP Server ([`c2_server/mcp/c2_project_mcp.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2_server/mcp/c2_project_mcp.py))**:
+   - Standardized FastMCP server designed for IDE assistants (Anthropic Claude Desktop, Cursor, Hermes).
+   - Operates strictly in a **read-only code analysis** capacity: parses C++ and Python ASTs, indexes module definitions, extracts wire dispatch wiring, checks regexes, and maps ATT&CK indicators.
+   - **Does NOT** open TCP connections to live C2 servers or dispatch offensive commands to victim machines.
 
 ### 7.3 Comprehensive Operator & Agent User Guide
 
@@ -456,9 +563,9 @@ For step-by-step operational instructions covering both interfaces, refer to the
 
 ## 9. Blue Team Detection Engineering & Forensics
 
-### 9.1 Sysmon Detection Rules
+### 9.1 Expanded Sysmon Detection Telemetry
 
-Defenders can detect AgentRed activities through targeted Sysmon rules:
+Defenders can detect AgentRed activities across the entire attack chain through targeted Sysmon and Windows Event Log rules:
 
 #### 1. AppInit_DLLs Registry Modifications (Sysmon Event ID 12 & 13)
 ```xml
@@ -466,6 +573,7 @@ Defenders can detect AgentRed activities through targeted Sysmon rules:
   <RegistryEvent onmatch="include">
     <TargetObject condition="contains">Microsoft\Windows NT\CurrentVersion\Windows\AppInit_DLLs</TargetObject>
     <TargetObject condition="contains">Microsoft\Windows NT\CurrentVersion\Windows\LoadAppInit_DLLs</TargetObject>
+    <TargetObject condition="contains">Microsoft\Windows NT\CurrentVersion\Windows\RequireSignedAppInit_DLLs</TargetObject>
   </RegistryEvent>
 </RuleGroup>
 ```
@@ -480,7 +588,51 @@ Defenders can detect AgentRed activities through targeted Sysmon rules:
 ```
 
 #### 3. Abnormal Process Lineage for Elevated Auto-Elevate Executables (Sysmon Event ID 1)
-Monitor for child processes of `slui.exe`. Legitimate executions rarely spawn unverified binaries or script interpreters.
+Monitor for child processes of `slui.exe`. Legitimate executions rarely spawn unverified binaries or script interpreters:
+```xml
+<RuleGroup name="Detect_Slui_Child_Processes" groupRelation="or">
+  <ProcessCreate onmatch="include">
+    <ParentImage condition="end with">\slui.exe</ParentImage>
+  </ProcessCreate>
+</RuleGroup>
+```
+
+#### 4. DLL In-Memory Injection across GUI Processes (Sysmon Event ID 7)
+`AppInit_DLLs.dll` is loaded into every desktop process linking `user32.dll`:
+```xml
+<RuleGroup name="Detect_AppInit_ImageLoad" groupRelation="or">
+  <ImageLoad onmatch="include">
+    <ImageLoaded condition="end with">\AppInit_DLLs.dll</ImageLoaded>
+  </ImageLoad>
+</RuleGroup>
+```
+
+#### 5. Token Stealing Handle Access on Winlogon (Sysmon Event ID 10)
+Non-system processes requesting `PROCESS_DUP_HANDLE` (`0x0040`) or `PROCESS_QUERY_INFORMATION` (`0x1400`) against `winlogon.exe`:
+```xml
+<RuleGroup name="Detect_Winlogon_Handle_Duplication" groupRelation="or">
+  <ProcessAccess onmatch="include">
+    <TargetImage condition="end with">\winlogon.exe</TargetImage>
+    <GrantedAccess condition="contains">0x0040</GrantedAccess>
+  </ProcessAccess>
+</RuleGroup>
+```
+
+#### 6. Outbound C2 Socket Telemetry (Sysmon Event ID 3)
+```xml
+<RuleGroup name="Detect_C2_Outbound_Ports" groupRelation="or">
+  <NetworkConnect onmatch="include">
+    <DestinationPort condition="is">4444</DestinationPort>
+    <DestinationPort condition="is">4445</DestinationPort>
+  </NetworkConnect>
+</RuleGroup>
+```
+
+#### 7. Windows Defender Tampering (PowerShell ScriptBlock Event ID 4104)
+Monitor Microsoft-Windows-PowerShell/Operational Event ID 4104 for strings invoking exclusion additions:
+```powershell
+ScriptBlockText -match "Add-MpPreference.*-ExclusionPath"
+```
 
 ---
 
@@ -503,6 +655,58 @@ rule AgentRed_Watchdog_Implant {
         (2 of ($str_appinit, $str_mutex, $str_runkey) or $fn_peb)
 }
 ```
+
+---
+
+### 9.3 Production Sigma Detection Rules
+
+Production-grade Sigma detection rules are provided in the [`docs/sigma/`](file:///Users/matanmishali/AntiGravity/AgentRed/docs/sigma) directory for deployment into SIEMs (Splunk, Elastic, Sentinel):
+
+- 📜 **[`docs/sigma/proc_creation_win_uac_slui_bypass.yml`](file:///Users/matanmishali/AntiGravity/AgentRed/docs/sigma/proc_creation_win_uac_slui_bypass.yml)**: Detects UAC auto-elevation abuse where `slui.exe` spawns unexpected child processes.
+- 📜 **[`docs/sigma/registry_set_appinit_dlls_persistence.yml`](file:///Users/matanmishali/AntiGravity/AgentRed/docs/sigma/registry_set_appinit_dlls_persistence.yml)**: Detects persistence configuration in `Microsoft\Windows NT\CurrentVersion\Windows\AppInit_DLLs`.
+- 📜 **[`docs/sigma/winlogon_token_stealing_access.yml`](file:///Users/matanmishali/AntiGravity/AgentRed/docs/sigma/winlogon_token_stealing_access.yml)**: Detects unprivileged or anomalous processes opening `winlogon.exe` with duplicate-handle permissions.
+
+---
+
+### 9.4 Memory Forensics & Volatility 3 Analysis
+
+While in-memory PEB masquerading ([`process_steal.h`](file:///Users/matanmishali/AntiGravity/AgentRed/process_steal.h)) successfully deceives user-mode utilities that rely on `NtQueryInformationProcess(ProcessBasicInformation)`, memory forensics can reliably identify the deception:
+
+1. **Kernel EPROCESS vs. User-Mode PEB Discrepancy**:
+   - The Windows kernel maintains true executable image tracking in `EPROCESS->SeAuditProcessImageFileName` and the Virtual Address Descriptor (VAD) root.
+   - User-mode overwrites only modify `PEB->ProcessParameters->CommandLine` and `ImagePathName`.
+2. **Volatility 3 Investigation Workflow**:
+   ```bash
+   # 1. Scan memory image for all active processes
+   python3 vol.py -f memory.dmp windows.psscan
+
+   # 2. Inspect Virtual Address Descriptors for unmapped or injected sections
+   python3 vol.py -f memory.dmp windows.malfind --pid <PID>
+
+   # 3. Cross-reference process command lines against mapped image files
+   python3 vol.py -f memory.dmp windows.cmdline
+   ```
+   - **Telltale Anomaly**: `windows.cmdline` will display the masqueraded string (e.g., `svchost.exe -k netsvcs`), while `windows.vadinfo` or `windows.filescan` reveals the actual underlying executable mapped from the user profile directory.
+
+---
+
+### 9.5 Consolidated Indicators of Compromise (IOC) Matrix
+
+| Category | Indicator / Value | Description |
+| :--- | :--- | :--- |
+| **File Path** | `%USERPROFILE%\AppInit_DLLs.dll` | Core C2 in-memory payload DLL |
+| **File Path** | `%USERPROFILE%\SAFE.exe` | Failsafe persistence watchdog binary |
+| **File Path** | `%TEMP%\RogueCheck_*` | Temporary artifacts from RoguePlanet TOCTOU testing |
+| **Registry Key** | `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Windows\AppInit_DLLs` | AppInit injection list |
+| **Registry Key** | `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Windows\LoadAppInit_DLLs` | Set to `1` (DWORD) |
+| **Registry Key** | `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Windows\RequireSignedAppInit_DLLs` | Set to `0` (DWORD) |
+| **Registry Key** | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\Windows Security Health` | Watchdog auto-start entry |
+| **Registry Key** | `HKCU\Software\Classes\exefile\shell\open\command` | UAC auto-elevate hijack key |
+| **Named Mutex** | `Global\__C2SafeMtx__` | Global mutex held by `SAFE.exe` watchdog |
+| **Network Port** | TCP `4444` (outbound from victim) | Primary C2 JSON command and event stream |
+| **Network Port** | TCP `4445` (outbound from victim) | Out-of-band direct reverse shell connection |
+| **Process Lineage**| `slui.exe` spawning non-standard binaries | UAC elevation signature |
+| **Process Lineage**| `powershell.exe` with `Add-MpPreference -ExclusionPath` | Antivirus exclusion tampering |
 
 ---
 
