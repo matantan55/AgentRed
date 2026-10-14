@@ -7,3 +7,7 @@ compile_commands.json
 files/
 exe/
 .env
+*.pyc
+*.pyo
+*.pyd
+__pycache__/

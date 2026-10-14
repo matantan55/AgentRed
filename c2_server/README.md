@@ -60,7 +60,7 @@
 | File | Role |
 |---|---|
 | `server.py` | C2 server — relays commands, broadcasts push events |
-| `client.py` | Operator interactive CLI |
+| `../c2core/client.py` | Operator interactive CLI (shared with the agent stack; lives at repo root) |
 | `dll.cpp` | Windows agent DLL source (compiles to `AppInit_DLLs.dll`) |
 | `SAFE.cpp` | Failsafe watchdog & cleanup tool source (compiles to `SAFE.exe`) |
 | `AppInit_DLLs.dll` | Compiled in-memory agent — dropped on victim |
@@ -192,10 +192,10 @@ python3 server.py --certfile cert.pem --keyfile key.pem
 
 ```bash
 # Default
-python3 client.py
+python3 c2core/client.py
 
 # Custom server
-python3 client.py --host 192.168.1.10 --port 4444 --token mysecrettoken
+python3 c2core/client.py --host 192.168.1.10 --port 4444 --token mysecrettoken
 ```
 
 Type `help` at the `c2>` prompt for a full command reference.

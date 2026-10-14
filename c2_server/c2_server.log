@@ -94,3 +94,39 @@ psutil.AccessDenied: (pid=29546)
 2026-09-29 18:03:27,485 [INFO] Loaded modules: ['ssh', 'rdp', 'registry', 'activity']
 2026-09-29 18:03:27,485 [INFO] Auth token env: C2_AUTH_TOKEN  (current value hidden)
 2026-09-29 18:11:39,969 [INFO] Shutting down.
+2026-10-14 07:55:53,733 [WARNING] C2 server (NO TLS) on 127.0.0.1:4444 — use --certfile/--keyfile in production!
+2026-10-14 07:55:53,733 [INFO] Loaded modules: ['ssh', 'rdp', 'registry', 'activity']
+2026-10-14 07:55:53,734 [INFO] Auth token env: C2_AUTH_TOKEN  (current value hidden)
+2026-10-14 07:56:36,822 [INFO] New connection from 127.0.0.1:57958
+2026-10-14 07:56:36,823 [WARNING] Auth failure from 127.0.0.1:57958
+2026-10-14 07:56:36,823 [INFO] Disconnected: 127.0.0.1:57958 [role=operator]
+2026-10-14 07:57:33,881 [INFO] New connection from 127.0.0.1:57961
+2026-10-14 07:57:33,885 [WARNING] Auth failure from 127.0.0.1:57961
+2026-10-14 07:57:33,885 [INFO] Disconnected: 127.0.0.1:57961 [role=operator]
+2026-10-14 07:58:47,538 [INFO] New connection from 127.0.0.1:57976
+2026-10-14 07:58:47,541 [WARNING] Auth failure from 127.0.0.1:57976
+2026-10-14 07:58:47,541 [INFO] Disconnected: 127.0.0.1:57976 [role=operator]
+2026-10-14 07:58:47,542 [INFO] New connection from 127.0.0.1:57977
+2026-10-14 07:58:47,542 [INFO] Authenticated: 127.0.0.1:57977  role=operator
+2026-10-14 07:58:47,542 [INFO] Disconnected: 127.0.0.1:57977 [role=operator]
+2026-10-14 07:58:47,565 [INFO] New connection from 127.0.0.1:57978
+2026-10-14 07:58:47,565 [INFO] Authenticated: 127.0.0.1:57978  role=operator
+2026-10-14 07:58:47,566 [INFO] Disconnected: 127.0.0.1:57978 [role=operator]
+2026-10-14 07:58:47,566 [INFO] New connection from 127.0.0.1:57979
+2026-10-14 07:58:47,566 [INFO] Authenticated: 127.0.0.1:57979  role=operator
+2026-10-14 07:58:47,566 [INFO] Disconnected: 127.0.0.1:57979 [role=operator]
+2026-10-14 08:00:16,572 [INFO] Shutting down.
+2026-10-14 08:00:40,810 [WARNING] C2 server (NO TLS) on 127.0.0.1:4444 — use --certfile/--keyfile in production!
+2026-10-14 08:00:40,811 [INFO] Loaded modules: ['ssh', 'rdp', 'registry', 'activity']
+2026-10-14 08:00:40,811 [INFO] Auth token env: C2_AUTH_TOKEN  (current value hidden)
+2026-10-14 08:00:52,557 [INFO] New connection from 127.0.0.1:57984
+2026-10-14 08:00:52,557 [WARNING] Auth failure from 127.0.0.1:57984
+2026-10-14 08:00:52,559 [INFO] Disconnected: 127.0.0.1:57984 [role=operator]
+2026-10-14 08:01:11,432 [INFO] New connection from 127.0.0.1:57987
+2026-10-14 08:01:11,432 [WARNING] Auth failure from 127.0.0.1:57987
+2026-10-14 08:01:11,433 [INFO] Disconnected: 127.0.0.1:57987 [role=operator]
+2026-10-14 08:02:30,544 [INFO] New connection from 127.0.0.1:57993
+2026-10-14 08:02:30,545 [INFO] Authenticated: 127.0.0.1:57993  role=operator
+2026-10-14 08:02:41,643 [INFO] Dispatch module='activity' action='system_stats' by 127.0.0.1:57993
+2026-10-14 08:03:21,296 [INFO] Disconnected: 127.0.0.1:57993 [role=operator]
+2026-10-14 08:03:32,484 [INFO] Shutting down.

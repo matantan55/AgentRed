@@ -20,23 +20,26 @@ adds no capabilities beyond what `client.py` already dispatches.
 ## Project layout
 
 ```
-agent/
-├── client.py              (existing) operator console + transport — imported, untouched
-├── agent_tools.py         tool layer over client.py's C2Client
-├── agent.py               headless/REPL agent (OpenRouter | local | --dry-run)
-├── agent_tui.py           Claude-Code-style Textual UI for the same agent
-├── AGENT_PROMPT.md        init prompt (persona, RoE, JSON action protocol)
-├── README.md
-└── tests/                 everything that is test/demo tooling, not runtime
-    ├── mock_c2_server.py        lab stand-in: real protocol, fake Windows agent
-    │                            (incl. callback cmd.exe over an in-memory FS)
-    ├── mock_llm_server.py       scripted chat-completions server (SLEEP/SCENARIO env)
-    ├── selftest_tui.py          pilot: connect → /help → read → Approve → Deny
-    ├── selftest_busy.py         pilot: busy-spinner lifecycle; writes tui_busy_preview.svg
-    ├── screenshot_preview.py    renders tui_preview.svg (regenerate after UI tweaks)
-    ├── auth_probe.py            asks a C2 port which token it accepts
-    ├── tui_preview.svg          UI artifact
-    └── tui_busy_preview.svg     mid-spinner artifact
+AgentRed/
+├── c2core/
+│   └── client.py          (existing) operator console + transport — single copy
+│                          at repo root; imported by agent_tools, still runs standalone
+└── agent/
+    ├── agent_tools.py     tool layer over c2core.client's C2Client
+    ├── agent.py           headless/REPL agent (OpenRouter | local | --dry-run)
+    ├── agent_tui.py       Claude-Code-style Textual UI for the same agent
+    ├── AGENT_PROMPT.md    init prompt (persona, RoE, JSON action protocol)
+    ├── README.md
+    └── tests/             everything that is test/demo tooling, not runtime
+        ├── mock_c2_server.py        lab stand-in: real protocol, fake Windows agent
+        │                            (incl. callback cmd.exe over an in-memory FS)
+        ├── mock_llm_server.py       scripted chat-completions server (SLEEP/SCENARIO env)
+        ├── selftest_tui.py          pilot: connect → /help → read → Approve → Deny
+        ├── selftest_busy.py         pilot: busy-spinner lifecycle; writes tui_busy_preview.svg
+        ├── screenshot_preview.py    renders tui_preview.svg (regenerate after UI tweaks)
+        ├── auth_probe.py            asks a C2 port which token it accepts
+        ├── tui_preview.svg          UI artifact
+        └── tui_busy_preview.svg     mid-spinner artifact
 ```
 
 Run the selftests from the repo root with the venv interpreter, e.g.

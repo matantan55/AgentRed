@@ -70,7 +70,7 @@ The project studies how modern endpoint detection mechanisms (EDR, AMSI, Windows
 | **Authenticode Spoofer** | [`cert_spoofer.py`](file:///Users/matanmishali/AntiGravity/AgentRed/cert_spoofer.py) | Python 3 | PE Authenticode signature extractor, transplant engine, & VT benchmark. |
 | **PE Structure Analyzer** | [`file_analyzer.py`](file:///Users/matanmishali/AntiGravity/AgentRed/file_analyzer.py) | Python 3 | Low-level binary PE32/PE32+ header and section parser. |
 | **C2 Relay Server** | [`c2_server/server.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2_server/server.py) | Python 3 | Multi-threaded TCP/TLS event-driven command and push broadcaster. |
-| **Operator Console** | [`c2_server/client.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2_server/client.py) | Python 3 | Interactive command console + direct raw TCP reverse shell listener. |
+| **Operator Console** | [`c2core/client.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2core/client.py) | Python 3 | Interactive command console + direct raw TCP reverse shell listener. Shared by the agent stack (`from c2core import client`). |
 | **Autonomous AI TUI** | [`agent/agent_tui.py`](file:///Users/matanmishali/AntiGravity/AgentRed/agent/agent_tui.py) | Python 3 | Claude-Code-style Textual TUI with human-in-the-loop approval gates. |
 | **Agent Tool Framework**| [`agent/agent_tools.py`](file:///Users/matanmishali/AntiGravity/AgentRed/agent/agent_tools.py) | Python 3 | 38 programmatic operational tools wrapping the C2 client for LLMs. |
 | **Code Intelligence MCP**| [`c2_server/mcp/c2_project_mcp.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2_server/mcp/c2_project_mcp.py) | Python 3 | FastMCP server exposing AST code intelligence & detection mapping to IDEs. |
@@ -168,7 +168,7 @@ python server.py --host 0.0.0.0 --port 4444 --token secret123
 
 **Option A: Interactive CLI Console**
 ```bash
-python client.py --host 127.0.0.1 --port 4444 --token secret123
+python c2core/client.py --host 127.0.0.1 --port 4444 --token secret123
 ```
 
 **Option B: Autonomous AI Operator (Textual TUI)**

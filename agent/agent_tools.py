@@ -32,7 +32,13 @@ import threading
 import time
 from typing import Any, Callable
 
-import client as c2  # reuse the transport from client.py — no duplication
+# Shared transport: c2core/client.py at the repo root — single source of truth
+# (formerly duplicated under agent/ and c2_server/). Bootstrap the repo root
+# onto sys.path so the import works from any cwd.
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+from c2core import client as c2
 
 # ──────────────────────────────────────────────────────────────────────
 # Connection singleton
