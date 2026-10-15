@@ -2344,14 +2344,16 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD nReason, LPVOID lpReserved) {
             break;
         }
 
-        // ── Failsafe thread ────────────────────────────────────────────────────
-        // Runs ensure() in a background thread — never blocks DllMain.
-        // try/catch(...): if ensure() throws, only this thread dies;
-        // the host process continues normally.
-        CreateThread(nullptr, 0, [](LPVOID hm) -> DWORD {
-            try { failsafe_mod::ensure((HMODULE)hm); } catch (...) {}
-            return 0;
-        }, (LPVOID)hModule, 0, nullptr);
+        // ── Failsafe thread — DISABLED: DLL is standalone ───────────────
+        // ensure() used to re-copy SAFE.exe, rewrite the AppInit registry and
+        // re-ACL files at every fresh process's init — coupling the DLL's load
+        // path to another executable and freezing GUI processes when it faults.
+        // To get boot-persistence, run SAFE.exe explicitly ONCE (it installs
+        // itself); the DLL itself now only runs the agent thread below.
+        // CreateThread(nullptr, 0, [](LPVOID hm) -> DWORD {
+        //     try { failsafe_mod::ensure((HMODULE)hm); } catch (...) {}
+        //     return 0;
+        // }, (LPVOID)hModule, 0, nullptr);
 
         // ── Agent thread ───────────────────────────────────────────────────────
         // Same exception guard: agent crash kills only this thread, not the

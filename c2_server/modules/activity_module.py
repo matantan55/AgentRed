@@ -150,7 +150,23 @@ class ActivityModule:
 
     def _network_connections(self, _p: dict) -> dict:
         conns = []
-        for c in psutil.net_connections(kind="inet"):
+        partial = False
+        try:
+            # Full system-wide table — works only when the server runs as root
+            # (macOS: proc_pidinfo on foreign processes is privileged).
+            raw = [(getattr(c, "pid", None), c)
+                   for c in psutil.net_connections(kind="inet")]
+        except (psutil.AccessDenied, PermissionError):
+            partial = True
+            raw = []
+            for proc in psutil.process_iter(["pid"]):
+                try:
+                    raw.extend((proc.pid, c)
+                               for c in proc.net_connections(kind="inet"))
+                except (psutil.AccessDenied, psutil.NoSuchProcess,
+                        psutil.ZombieProcess, PermissionError):
+                    continue   # foreign/root process — invisible without root
+        for owner_pid, c in raw:
             laddr = f"{c.laddr.ip}:{c.laddr.port}" if c.laddr else ""
             raddr = f"{c.raddr.ip}:{c.raddr.port}" if c.raddr else ""
             conns.append({
@@ -160,9 +176,16 @@ class ActivityModule:
                 "laddr":  laddr,
                 "raddr":  raddr,
                 "status": c.status,
-                "pid":    c.pid,
+                "pid":    getattr(c, "pid", owner_pid),
             })
-        return {"status": "ok", "count": len(conns), "connections": conns}
+        out = {"status": "ok", "count": len(conns), "connections": conns}
+        if partial:
+            out["note"] = ("partial: server is not running as root, so only "
+                           "same-user process connections are visible (macOS "
+                           "restricts PROC_PIDLISTFDS). Do NOT run the server "
+                           "under sudo — it silently drops env vars and "
+                           "breaks the token wiring.")
+        return out
 
     def _top_cpu(self, p: dict) -> dict:
         limit = int(p.get("limit", 10))
