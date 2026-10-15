@@ -1,5 +1,5 @@
 # C2 Server — Usage Guide
-> **Security Research & Testing** — Use only on machines you own or have explicit written permission to test on.
+> **Educational project** — built for a cybersecurity course. Use only on machines you own or have explicit written permission to test on.
 
 ---
 
@@ -47,10 +47,11 @@
 
 - **Operator** connects to the server via `client.py`
 - **Agent** (`AppInit_DLLs.dll`) runs on the victim and connects back to the server
-- **Hybrid Module Dispatch**: When an operator dispatches a command, `server.py` evaluates the target module:
-  - **Server-Side Python Modules** (`ssh`, `rdp`, `registry`, `activity`): Executed locally on the server host via Python libraries (`psutil`, `paramiko`, `winreg`).
-  - **Victim Implant Modules** (`notify`, `shell`): Forwarded over the active TCP connection via `relay_to_agent()` to `AppInit_DLLs.dll` running on the victim endpoint.
-- **Push Event Telemetry**: Victim window and lock state events captured by the DLL's WinEvent hooks are streamed to the server and broadcasted asynchronously to all authenticated operators.
+- **Hybrid Module Dispatch** (`server.py`, routing rules): every server-side module (`ssh`, `rdp`, `registry`, `activity`) can answer locally, **but a live target wins**:
+  - **Default** → the command is relayed via `relay_to_agent()` to `AppInit_DLLs.dll` on the victim (dll.cpp implements `registry`/`activity`/`notify`/`shell`/`pivot`/`defender` under the same names) — results describe the VICTIM.
+  - **`"where": "server"`** in the command JSON → forces the server-side module on the operator host even while an agent is connected (e.g. `raw` console command with that field).
+  - **No agent connected** → server-side fallback; a successful result carries `"note": "EXECUTED ON THE C2 SERVER HOST — ..."` so host data can never masquerade as victim data.
+- **Push Event Telemetry**: victim window/lock-state events captured by the DLL's WinEvent hooks stream to the server and broadcast to all authenticated operators; the server additionally broadcasts `agent_joined` / `agent_left` lifecycle events so operators see targets appear/disappear in real time.
 - **Reverse Shell**: An independent direct TCP connection on port `4445` (bypasses the server entirely for zero latency).
 
 ---
