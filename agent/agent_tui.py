@@ -91,9 +91,17 @@ class Bridge(threading.Thread):
             r = agent_tools.connect(self.cfg.host, self.cfg.port, self.cfg.token,
                                     self.cfg.tls, self.cfg.ca_cert)
             self.emit(("connected", r["message"]))
+        except ConnectionRefusedError:
+            # nothing bound the port at all — this is NOT an auth problem.
+            # (ConnectionRefusedError is a ConnectionError subclass, so it must
+            # be caught first or it masquerades as a rejected token.)
+            self.emit(("connerror", f"cannot reach C2 server at "
+                       f"{self.cfg.host}:{self.cfg.port} — nothing is listening "
+                       f"there. Start the server first: c2_server/server.py (real) "
+                       f"or tests/mock_c2_server.py (lab)."))
         except ConnectionError as exc:
-            # could be a refused socket OR a rejected token — the message itself
-            # is now self-diagnosing either way (see agent_tools.connect)
+            # a real rejection: the server answered and said no — message is
+            # self-diagnosing (see agent_tools.connect)
             self.emit(("connerror", str(exc)))
         except Exception as exc:
             self.emit(("connerror", f"cannot reach C2 server at "

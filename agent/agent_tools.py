@@ -67,7 +67,9 @@ def _listener_info(port: int) -> str:
             ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
             capture_output=True, text=True, timeout=5).stdout.split()
         if not out:
-            return "nothing listening"
+            return ("nothing visible to lsof (NOTE: a server running under "
+                    "sudo/root can be invisible here — confirm with: "
+                    f"sudo lsof -nP -iTCP:{port} -sTCP:LISTEN)")
         pid = out[0]
         cmd = subprocess.run(["ps", "-p", pid, "-o", "command="],
                              capture_output=True, text=True, timeout=5).stdout.strip()
@@ -83,6 +85,17 @@ def connect(host: str, port: int, token: str,
     if _session is not None:
         return {"status": "ok", "message": f"Already connected to {host}:{port}"}
     c2.print_alert = _capture_alert  # patch the module-global the receiver calls
+    # Reachability probe first: client.py swallows socket errors into a plain
+    # {"status":"error"} response, so an unreachable server would otherwise be
+    # mislabelled as a rejected token below.
+    try:
+        probe = socket.create_connection((host, port), timeout=5)
+        probe.close()
+    except OSError as exc:
+        raise ConnectionError(
+            f"Cannot reach C2 server at {host}:{port} — nothing is listening "
+            f"there ({exc}). Start c2_server/server.py (or tests/mock_c2_server.py "
+            f"for the lab) BEFORE the agent.")
     s = c2.C2Client(host=host, port=port, token=token,
                     use_tls=use_tls, ca_cert=ca_cert)
     s.connect()
@@ -91,7 +104,7 @@ def connect(host: str, port: int, token: str,
         s.close()
         raise ConnectionError(
             f"Authentication failed — the server at {host}:{port} rejected the "
-            f"token you presented ({token!r}). "
+            f"token you presented ({token!r}); it replied: {resp.get('message')!r}. "
             "Lab mock default token: 'labtoken' (pass --token labtoken). "
             "Target C2 server: its C2_AUTH_TOKEN (default 'changeme'). "
             f"Process currently owning port {port}: {_listener_info(port)}")

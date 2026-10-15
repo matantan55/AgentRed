@@ -81,19 +81,19 @@ pip3 install -r requirements.txt
 ```
 
 ### Compile the DLL (requires MinGW cross-compiler on macOS/Linux)
-```bash
-# Without SSH support (simpler, no libssh2 needed)
-x86_64-w64-mingw32-g++ -shared -o AppInit_DLLs.dll dll.cpp \
-    -lws2_32 -lshlwapi -lshell32 -ladvapi32 \
-    -lpdh -lpsapi -liphlpapi -lwtsapi32 -loleaut32 \
-    -std=c++17 -O2 -fpermissive
 
-# With SSH support (requires libssh2 cross-compiled for Windows)
-x86_64-w64-mingw32-g++ -shared -o AppInit_DLLs.dll dll.cpp \
-    -lws2_32 -lshlwapi -lshell32 -ladvapi32 \
-    -lpdh -lpsapi -liphlpapi -lwtsapi32 -loleaut32 -lssh2 \
-    -DC2_HAS_LIBSSH2 -std=c++17 -O2 -fpermissive
-```
+**Use `build_dll.sh` at the repo root** (`bash build_dll.sh`). It links the
+C++ runtime STATICALLY (`libstdc++.a`, `libwinpthread.a`, `-static-libgcc`).
+Do NOT build with a bare `-shared` — the plain recipe produces a DLL that
+imports `libstdc++-6.dll`, `libgcc_s_seh-1.dll` and `libwinpthread-1.dll`,
+which do not exist on a clean Windows machine; the loader then refuses the
+DLL SILENTLY everywhere (no crash, no connection, nothing in logs).
+Verify any build with:
+`x86_64-w64-mingw32-objdump -p AppInit_DLLs.dll | grep "DLL Name:"`
+— every line must be a Windows system DLL.
+
+For the libssh2 (SSH/pivot) variant, add `-lssh2 -DC2_HAS_LIBSSH2` to the
+compile line inside build_dll.sh once a Windows libssh2 is cross-compiled.
 
 ### Compile SAFE.exe
 ```bash
