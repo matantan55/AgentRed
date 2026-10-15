@@ -1164,3 +1164,21 @@ psutil.AccessDenied: (pid=41090)
 2026-10-15 12:50:11,458 [INFO] Disconnected: 127.0.0.1:64962 [role=operator]
 2026-10-15 12:50:11,458 [INFO] New connection from 127.0.0.1:64963
 2026-10-15 12:50:11,458 [INFO] Authenticated: 127.0.0.1:64963  role=operator
+2026-10-15 12:51:51,903 [INFO] New connection from 192.168.1.24:55057
+2026-10-15 12:51:51,921 [INFO] Authenticated: 192.168.1.24:55057  role=agent
+2026-10-15 12:51:53,429 [INFO] Connection closed by 192.168.1.24:55057
+2026-10-15 12:51:53,431 [INFO] Disconnected: 192.168.1.24:55057 [role=agent]
+2026-10-15 12:51:57,099 [INFO] New connection from 192.168.1.24:55058
+2026-10-15 12:51:57,100 [INFO] Authenticated: 192.168.1.24:55058  role=agent
+2026-10-15 12:52:31,168 [INFO] Relay module='activity' action='network_connections' → agent
+2026-10-15 12:52:33,840 [INFO] Relay module='activity' action='system_stats' → agent
+2026-10-15 12:53:10,379 [INFO] Relay module='activity' action='network_connections' → agent
+2026-10-15 12:53:42,264 [INFO] Relay module='activity' action='processes' → agent
+2026-10-15 12:54:13,878 [INFO] Relay module='ssh' action='list' → agent
+2026-10-15 12:54:46,460 [INFO] Relay module='registry' action='read_value' → agent
+2026-10-15 12:57:04,773 [INFO] Connection closed by 192.168.1.24:55058
+2026-10-15 12:57:04,784 [INFO] Disconnected: 192.168.1.24:55058 [role=agent]
+2026-10-15 12:57:33,136 [INFO] New connection from 192.168.1.24:55063
+2026-10-15 12:57:33,138 [INFO] Authenticated: 192.168.1.24:55063  role=agent
+2026-10-15 13:02:33,123 [INFO] Connection closed by 192.168.1.24:55063
+2026-10-15 13:02:33,132 [INFO] Disconnected: 192.168.1.24:55063 [role=agent]
