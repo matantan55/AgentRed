@@ -296,6 +296,7 @@ class OperatorApp(App):
         self.bridge = Bridge(cfg)
         self.initial_task = initial_task
         self.transcript: list[tuple] = []   # plain-data mirror for tests
+        self._victim: str | None = None    # peer of the live DLL agent
         # busy-indicator state
         self._busy_phase = ""
         self._busy_t0 = 0.0
@@ -307,9 +308,8 @@ class OperatorApp(App):
         brain = ("offline planner (dry-run)" if self.cfg.dry_run
                  else f"{self.cfg.provider} · {self.cfg.model}")
         yield Static("▚ SENTINEL — C2 Research Operator", id="banner")
-        yield Static(f"target {self.cfg.host}:{self.cfg.port}   ·   {brain}   ·   "
-                     "type /help — mutations always ask before they touch the box",
-                     id="meta")
+        self._meta_base = f"c2 server {self.cfg.host}:{self.cfg.port}   ·   {brain}"
+        yield Static(self._victim_line(), id="meta")
         yield VerticalScroll(id="chat")
         yield Horizontal(Static("❯", id="prompt-sign"),
                          Input(placeholder="Ask the agent to do something on the lab target…",
@@ -325,6 +325,16 @@ class OperatorApp(App):
         self.set_interval(0.12, self._drain_queue)
         if self.initial_task:
             self._handle_user_line(self.initial_task)
+
+    # -- victim identity ----------------------------------------------------
+    def _victim_line(self) -> str:
+        v = f"[b]{esc(self._victim)}[/b]" if self._victim \
+            else "[dim]none detected yet[/dim]"
+        return (f"{self._meta_base}   ·   victim: {v}   ·   "
+                "type /help — mutations always ask before they touch the box")
+
+    def _refresh_meta(self):
+        self.query_one("#meta", Static).update(self._victim_line())
 
     # -- mount helpers ------------------------------------------------------
     def _mount(self, w):
@@ -380,15 +390,39 @@ class OperatorApp(App):
             self._mount(ConfirmPanel(ev[1], ev[2], ev[3]))
         elif kind == "push":
             e = ev[1]
-            self._line("push", f"  📡 victim push #{e.get('seq')} "
-                               f"[dim]{esc(str(e.get('received_at', '')))}[/dim] "
-                               f"[b]{esc(str(e.get('title', '')))}[/b] — {esc(str(e.get('body', '')))}")
+            et = str(e.get("event", ""))
+            if et == "agent_joined":
+                self._victim = str(e.get("peer") or "?")
+                self._refresh_meta()
+                self._line("push", f"  📨 agent joined — victim is now "
+                                   f"[b]{esc(self._victim)}[/b]")
+            elif et == "agent_left":
+                if not self._victim or self._victim == str(e.get("peer")):
+                    self._victim = None
+                self._refresh_meta()
+                self._line("push", f"  📴 agent left "
+                                   f"({esc(str(e.get('peer', '?')))}).")
+            elif et == "agent_snapshot":
+                peers = e.get("peers") or []
+                v = str(peers[0]) if peers else None
+                self._victim = v
+                self._refresh_meta()
+                if v:
+                    self._line("push", f"  👥 agent(s) online: {len(peers)} — "
+                                       f"victim: [b]{esc(v)}[/b]")
+            else:
+                self._line("push", f"  📡 victim push #{e.get('seq')} "
+                                   f"[dim]{esc(str(e.get('received_at', '')))}[/dim] "
+                                   f"[b]{esc(str(e.get('title', '')))}[/b] — {esc(str(e.get('body', '')))}")
         elif kind == "error":
             self._line("error", f"  ✘ {esc(ev[1])}")
         elif kind == "info":
             self._line("info", f"  ℹ {esc(ev[1])}")
         elif kind == "connected":
             self._line("conn", f"  ⚿ {esc(ev[1])}")
+            # Pull any agent_snapshot/agent_joined that landed during the
+            # handshake so the header knows the victim immediately.
+            self.bridge._drain_push()
         elif kind == "connerror":
             self._line("error", f"  ⚿ {esc(ev[1])}")
         elif kind == "status":

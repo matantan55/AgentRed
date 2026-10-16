@@ -1182,3 +1182,44 @@ psutil.AccessDenied: (pid=41090)
 2026-10-15 12:57:33,138 [INFO] Authenticated: 192.168.1.24:55063  role=agent
 2026-10-15 13:02:33,123 [INFO] Connection closed by 192.168.1.24:55063
 2026-10-15 13:02:33,132 [INFO] Disconnected: 192.168.1.24:55063 [role=agent]
+2026-10-15 13:07:26,726 [INFO] New connection from 192.168.1.24:55072
+2026-10-15 13:07:26,737 [INFO] Authenticated: 192.168.1.24:55072  role=agent
+2026-10-15 13:08:35,893 [INFO] Connection closed by 192.168.1.24:55072
+2026-10-15 13:08:35,902 [INFO] Disconnected: 192.168.1.24:55072 [role=agent]
+2026-10-15 13:12:16,489 [INFO] Shutting down.
+2026-10-15 13:12:19,840 [WARNING] C2 server (NO TLS) on 0.0.0.0:4444 — use --certfile/--keyfile in production!
+2026-10-15 13:12:19,840 [INFO] Loaded modules: ['ssh', 'rdp', 'registry', 'activity']
+2026-10-15 13:12:19,840 [INFO] Auth token env: C2_AUTH_TOKEN  (current value hidden)
+2026-10-15 13:12:25,645 [INFO] New connection from 127.0.0.1:65179
+2026-10-15 13:12:25,646 [INFO] Disconnected: 127.0.0.1:65179 [role=operator]
+2026-10-15 13:12:25,646 [INFO] New connection from 127.0.0.1:65180
+2026-10-15 13:12:25,646 [INFO] Authenticated: 127.0.0.1:65180  role=operator
+2026-10-15 13:13:36,857 [INFO] New connection from 192.168.1.24:55097
+2026-10-15 13:13:36,864 [INFO] Authenticated: 192.168.1.24:55097  role=agent
+2026-10-15 13:13:38,054 [INFO] Connection closed by 192.168.1.24:55097
+2026-10-15 13:13:38,055 [INFO] Disconnected: 192.168.1.24:55097 [role=agent]
+2026-10-15 13:13:53,864 [INFO] New connection from 192.168.1.24:55121
+2026-10-15 13:13:53,869 [INFO] Authenticated: 192.168.1.24:55121  role=agent
+2026-10-15 13:15:57,201 [INFO] Relay module='activity' action='network_connections' → agent
+2026-10-15 13:15:59,313 [INFO] Relay module='activity' action='system_stats' → agent
+2026-10-15 13:16:31,731 [INFO] Relay module='activity' action='network_connections' → agent
+2026-10-15 13:17:02,750 [INFO] Relay module='activity' action='processes' → agent
+2026-10-15 13:17:34,185 [INFO] Relay module='activity' action='top_cpu' → agent
+2026-10-15 13:18:11,146 [INFO] Connection closed by 127.0.0.1:65180
+2026-10-15 13:18:11,147 [INFO] Disconnected: 127.0.0.1:65180 [role=operator]
+2026-10-15 13:18:17,145 [INFO] New connection from 127.0.0.1:65226
+2026-10-15 13:18:17,145 [INFO] New connection from 127.0.0.1:65227
+2026-10-15 13:18:17,145 [INFO] Disconnected: 127.0.0.1:65226 [role=operator]
+2026-10-15 13:18:17,145 [INFO] Authenticated: 127.0.0.1:65227  role=operator
+2026-10-15 13:25:11,468 [INFO] Shutting down.
+2026-10-15 13:37:40,878 [WARNING] C2 server (NO TLS) on 127.0.0.1:4467 — use --certfile/--keyfile in production!
+2026-10-15 13:37:40,878 [INFO] Loaded modules: ['ssh', 'rdp', 'registry', 'activity']
+2026-10-15 13:37:40,878 [INFO] Auth token env: C2_AUTH_TOKEN  (current value hidden)
+2026-10-15 13:37:51,553 [INFO] New connection from 127.0.0.1:65415
+2026-10-15 13:37:51,554 [INFO] Authenticated: 127.0.0.1:65415  role=agent
+2026-10-15 13:37:52,362 [INFO] New connection from 127.0.0.1:65416
+2026-10-15 13:37:52,363 [INFO] New connection from 127.0.0.1:65417
+2026-10-15 13:37:52,363 [INFO] Disconnected: 127.0.0.1:65416 [role=operator]
+2026-10-15 13:37:52,364 [INFO] Authenticated: 127.0.0.1:65417  role=operator
+2026-10-15 13:37:52,982 [INFO] Disconnected: 127.0.0.1:65417 [role=operator]
+2026-10-15 13:37:52,982 [INFO] Disconnected: 127.0.0.1:65415 [role=agent]
