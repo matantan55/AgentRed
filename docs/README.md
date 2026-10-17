@@ -33,7 +33,7 @@ Welcome to the **AgentRed** documentation repository. This directory contains te
    - Restrictive DACL file locking and registry watchdog ([`SAFE.cpp`](file:///Users/matanmishali/AntiGravity/AgentRed/SAFE.cpp)).
 4. **Command & Control Operations**:
    - Multi-threaded asynchronous relay and push broadcast server ([`c2_server/server.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2_server/server.py)).
-   - Interactive operator console ([`c2_server/client.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2_server/client.py)).
+   - Interactive operator console ([`c2core/client.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2core/client.py)).
    - Autonomous AI operator TUI with safety approval gates ([`agent/agent_tui.py`](file:///Users/matanmishali/AntiGravity/AgentRed/agent/agent_tui.py)).
    - Code intelligence FastMCP server for IDE assistants ([`c2_server/mcp/c2_project_mcp.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2_server/mcp/c2_project_mcp.py)).
 5. **Defensive Engineering & Forensics**:

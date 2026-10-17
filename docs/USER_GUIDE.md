@@ -1,6 +1,6 @@
 # AgentRed: Operator & Autonomous Agent User Guide
 
-> **Practical Guide**: Step-by-step instructions for operating the C2 infrastructure using both the interactive terminal client ([`client.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2_server/client.py)) and the autonomous AI operator ([`agent_tui.py`](file:///Users/matanmishali/AntiGravity/AgentRed/agent/agent_tui.py) / [`agent.py`](file:///Users/matanmishali/AntiGravity/AgentRed/agent/agent.py)).
+> **Practical Guide**: Step-by-step instructions for operating the C2 infrastructure using both the interactive terminal client ([`client.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2core/client.py)) and the autonomous AI operator ([`agent_tui.py`](file:///Users/matanmishali/AntiGravity/AgentRed/agent/agent_tui.py) / [`agent.py`](file:///Users/matanmishali/AntiGravity/AgentRed/agent/agent.py)).
 
 ---
 
@@ -51,7 +51,7 @@ pip install textual requests
 
 ## 2. Operating with the Interactive Client (`client.py`)
 
-The interactive client [`c2_server/client.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2_server/client.py) connects to [`server.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2_server/server.py) and presents an interactive `c2>` prompt.
+The interactive client [`c2core/client.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2core/client.py) connects to [`server.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2_server/server.py) and presents an interactive `c2>` prompt.
 
 ### 2.1 Connecting to the C2 Server
 
@@ -59,10 +59,10 @@ Start the client with your target server host, port, and authentication token:
 
 ```bash
 # Connect to default local server (127.0.0.1:4444, token: changeme)
-python3 client.py
+python3 c2core/client.py
 
 # Connect to a remote lab server with a custom token
-python3 client.py --host 192.168.1.10 --port 4444 --token mysecrettoken
+python3 c2core/client.py --host 192.168.1.10 --port 4444 --token mysecrettoken
 ```
 
 Once connected, you will enter the interactive prompt:
@@ -468,8 +468,8 @@ cd /Users/matanmishali/AntiGravity/AgentRed/agent
 python3 tests/mock_c2_server.py
 
 # Terminal 2: Connect with the client
-cd /Users/matanmishali/AntiGravity/AgentRed/c2_server
-python3 client.py --host 127.0.0.1 --port 4444 --token labtoken
+cd /Users/matanmishali/AntiGravity/AgentRed
+python3 c2core/client.py --host 127.0.0.1 --port 4444 --token labtoken
 
 # Terminal 3: Or connect with the autonomous agent
 cd /Users/matanmishali/AntiGravity/AgentRed/agent

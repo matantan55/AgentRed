@@ -153,7 +153,7 @@ graph TB
 ```
 
 The system operates across three tiers:
-1. **Operator Tier**: Consisting of [`client.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2_server/client.py) (interactive CLI) and [`agent_tui.py`](file:///Users/matanmishali/AntiGravity/AgentRed/agent/agent_tui.py) (LLM-driven interface featuring approval controls for destructive actions).
+1. **Operator Tier**: Consisting of [`client.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2core/client.py) (interactive CLI) and [`agent_tui.py`](file:///Users/matanmishali/AntiGravity/AgentRed/agent/agent_tui.py) (LLM-driven interface featuring approval controls for destructive actions).
 2. **Relay Tier**: Represented by [`c2_server/server.py`](file:///Users/matanmishali/AntiGravity/AgentRed/c2_server/server.py), which handles TLS encryption, operator token authentication, command routing, and asynchronous push event distribution.
 3. **Implant / Victim Tier**: Comprising the initial privilege escalation payload ([`red.cpp`](file:///Users/matanmishali/AntiGravity/AgentRed/red.cpp)), the core payload DLL ([`dll.cpp`](file:///Users/matanmishali/AntiGravity/AgentRed/dll.cpp)), and the failsafe watchdog ([`SAFE.cpp`](file:///Users/matanmishali/AntiGravity/AgentRed/SAFE.cpp)).
 
