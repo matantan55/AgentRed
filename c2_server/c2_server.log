@@ -1223,3 +1223,6 @@ psutil.AccessDenied: (pid=41090)
 2026-10-15 13:37:52,364 [INFO] Authenticated: 127.0.0.1:65417  role=operator
 2026-10-15 13:37:52,982 [INFO] Disconnected: 127.0.0.1:65417 [role=operator]
 2026-10-15 13:37:52,982 [INFO] Disconnected: 127.0.0.1:65415 [role=agent]
+2026-10-30 15:17:21,355 [WARNING] C2 server (NO TLS) on 0.0.0.0:4444 — use --certfile/--keyfile in production!
+2026-10-30 15:17:21,355 [INFO] Loaded modules: ['ssh', 'rdp', 'registry', 'activity']
+2026-10-30 15:17:21,355 [INFO] Auth token env: C2_AUTH_TOKEN  (current value hidden)

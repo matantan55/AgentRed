@@ -328,7 +328,7 @@ inline Value err_resp(const std::string& msg) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Config (read from environment variables at startup)
 // ─────────────────────────────────────────────────────────────────────────────
-static std::string g_host  = "192.168.1.20";
+static std::string g_host  = "192.168.1.23";
 static int         g_port  = 4444;
 static std::string g_token = "token";
 
