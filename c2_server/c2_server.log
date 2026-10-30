@@ -1226,3 +1226,21 @@ psutil.AccessDenied: (pid=41090)
 2026-10-30 15:17:21,355 [WARNING] C2 server (NO TLS) on 0.0.0.0:4444 — use --certfile/--keyfile in production!
 2026-10-30 15:17:21,355 [INFO] Loaded modules: ['ssh', 'rdp', 'registry', 'activity']
 2026-10-30 15:17:21,355 [INFO] Auth token env: C2_AUTH_TOKEN  (current value hidden)
+2026-10-30 15:33:49,984 [INFO] New connection from 192.168.1.24:50354
+2026-10-30 15:33:49,994 [INFO] Authenticated: 192.168.1.24:50354  role=agent
+2026-10-30 15:33:51,249 [INFO] Connection closed by 192.168.1.24:50354
+2026-10-30 15:33:51,250 [INFO] Disconnected: 192.168.1.24:50354 [role=agent]
+2026-10-30 15:34:21,009 [INFO] New connection from 127.0.0.1:50003
+2026-10-30 15:34:21,010 [INFO] Disconnected: 127.0.0.1:50003 [role=operator]
+2026-10-30 15:34:21,010 [INFO] New connection from 127.0.0.1:50004
+2026-10-30 15:34:21,010 [INFO] Authenticated: 127.0.0.1:50004  role=operator
+2026-10-30 15:35:06,125 [INFO] New connection from 192.168.1.24:50359
+2026-10-30 15:35:06,127 [INFO] Authenticated: 192.168.1.24:50359  role=agent
+2026-10-30 15:35:40,117 [INFO] Relay module='shell' action='status' → agent
+2026-10-30 15:35:43,155 [INFO] Relay module='activity' action='system_stats' → agent
+2026-10-30 15:36:36,779 [INFO] Relay module='activity' action='network_connections' → agent
+2026-10-30 15:36:41,286 [INFO] Relay module='shell' action='start' → agent
+2026-10-30 15:36:53,931 [INFO] Relay module='activity' action='processes' → agent
+2026-10-30 15:40:14,889 [INFO] Disconnected: 127.0.0.1:50004 [role=operator]
+2026-10-30 15:40:29,606 [INFO] Connection closed by 192.168.1.24:50359
+2026-10-30 15:40:29,607 [INFO] Disconnected: 192.168.1.24:50359 [role=agent]

